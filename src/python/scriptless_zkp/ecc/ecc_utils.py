@@ -44,6 +44,20 @@ class WeierstrassEllipticCurveConfig:
         """
         return ECC.construct(curve=self.curve, d=1).pointQ
 
+    @property
+    def identity(self) -> ECC.EccPoint:
+        """
+        Returns the point-at-infinity (`O`), which is the elliptic curve group's additive identity.
+        """
+        return self.base_point.point_at_infinity()
+
+    @staticmethod
+    def is_identity(point: ECC.EccPoint) -> bool:
+        """
+        Returns whether the given elliptic curve point is the point-at-infinity (`O`), the group's additive identity.
+        """
+        return point.is_point_at_infinity()
+
     def has_curve_name(self, curve_name: str):
         return curve_name in self.curve_aliases
 
