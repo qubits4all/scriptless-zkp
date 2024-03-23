@@ -15,7 +15,7 @@ all liability related to its use.
 ### Functional Existing Modules
 **NOTE:** R&D-only Status (see above disclaimer)
 
-- **Schnorr Signatures on Elliptic Curves** (`scriptless_zkp.ecc.schnorr`)
+- **Schnorr Signatures on Elliptic Curves** [`scriptless_zkp.ecc.schnorr`]
   - Currently supported (Weierstrass) prime-order curves:
     - **NIST P-256** (`secp256r1`)
   - TODO: Planned support for (Weierstrass) prime-order curves:
@@ -23,7 +23,9 @@ all liability related to its use.
     - NIST P-521 (`secp521r1`)
   - TODO: Planned support for curve(s), pending support in a backing dependency:
     - `secp256k1` (used for ECDSA on Bitcoin & Ethereum blockchains)
-- **HMAC-based & Blake2b-based Keyed Hash Cryptographic Commitments** (`scriptless_zkp.commitments.hmac_commitments`)
+- **HMAC-based & Blake2b-based Keyed Hash Cryptographic Commitments** [`scriptless_zkp.commitments.hmac_commitments`]
+- **Non-interactive Zero-Knowledge** (NIZK) **Proofs of Knowledge** (PoKs) **of Discrete Logarithms** (over Elliptic
+Curves) [`scriptless_zkp.ecc.zkp`]
 
 ### Planned Future Work & Coming Soon
 
@@ -32,16 +34,16 @@ all liability related to its use.
 - **Two-Party ECC Schnorr Signatures**
   - Including distributed multi-party computation of joint public key & private key-shares, and ZKP-based
   detection of deviations from correct protocol operation by either party.
-- **Non-interactive Zero-Knowledge** (NIZK) **Proofs of Knowledge** (PoKs) **of Discrete Logarithms** (over Elliptic
-Curves)
+- ~~Non-interactive Zero-Knowledge (NIZK) Proofs of Knowledge (PoKs) of Discrete Logarithms (over Elliptic
+Curves)~~
 - **NIZK Proofs of Knowledge** (PoKs) **of _Equal_ Discrete Logarithms**
-(based on [Chaum/Pedersen protocol](https://link.springer.com/content/pdf/10.1007/3-540-48071-4_7.pdf))
+(based on the [Chaum-Pedersen protocol](https://link.springer.com/content/pdf/10.1007/3-540-48071-4_7.pdf))
 
 #### Planned Future Work:
 - **Pedersen Commitments** & **Vector Pedersen Commitments** (on Elliptic Curves)
 - **Adaptor Signatures for ECC Schnorr** (single-party)
 - Support for **[BIP-340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki) compatible ECC Schnorr 
-Signatures** (on the `secp256k1` elliptic curve used by Bitcoin)
+Signatures** (on the `secp256k1` elliptic curve used by Bitcoin & Ethereum)
 - **BIP-340 compatible Two-Party ECC Schnorr Signatures**
 - **Zero-Knowledge Range Proofs** (based on Bulletproofs)
 - **Two-Party ECDSA Signatures** (based on [Yehuda Lindell's protocol](https://eprint.iacr.org/2017/552.pdf))
