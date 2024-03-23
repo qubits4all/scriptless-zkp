@@ -108,7 +108,7 @@ class SchnorrKeyPair:
         :return: an ECC Schnorr key-pair imported from a PKCS#8-wrapped DER-encoded byte string encoding of an ECC
                  private key, which has been decrypted using the provided passphrase.
         """
-        if type(encryption_passphrase) == str:
+        if encryption_passphrase is str:
             passphrase: bytes = encryption_passphrase.encode(encoding='utf-8')
         else:
             passphrase: Optional[bytes] = encryption_passphrase
@@ -144,7 +144,7 @@ class SchnorrKeyPair:
             PKCS8_ECC_KDF_PBKDF2_SHA1_AES256_CBC
         ]
 
-        if type(encryption_passphrase) == str:
+        if encryption_passphrase is str:
             passphrase: bytes = encryption_passphrase.encode(encoding='utf-8')
         else:
             passphrase: bytes = encryption_passphrase
@@ -162,6 +162,7 @@ class SchnorrKeyPair:
                 'salt_size': DEFAULT_PKCS8_HMAC_SHA1_SALT_BYTES   # size of random salt for use by KDF
             }
 
+            # noinspection PyTypeChecker
             return self.ecc_key_pair.export_key(
                 format=DEFAULT_ECC_PRIVATE_KEY_ENCODING_METHOD,  # 'DER'
                 compress=True,
@@ -285,7 +286,10 @@ class SchnorrPublicKey:
 
         # Calculate the truncated hash "e := H(Q || R || m)" of the public key, the signature's public nonce point &
         # the message associated with the Schnorr signature (truncated to the ECC curve's bit-length).
-        truncated_hasher = PrimeLengthTruncatedHasher(self.context.ecc_curve_config.order, self.context.message_hash_algo)
+        truncated_hasher = PrimeLengthTruncatedHasher(
+            self.context.ecc_curve_config.order,
+            self.context.message_hash_algo
+        )
         pubkey_nonce_message_hash: int = truncated_hasher.hash_to_int(
             pubkey_bytes + signature_nonce_point_bytes + message  # concatenate bytes ("Q || R || m")
         )
