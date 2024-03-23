@@ -206,7 +206,7 @@ class RevealedKeyedHashCommitment:
     def destroy(self) -> None:
         """Clears (i.e., zeroes out) the secret message & ephemeral key in memory."""
         self.verification_key.zfill(len(self.verification_key))
-        if type(self.secret_message) == bytearray:
+        if self.secret_message is bytearray:
             self.secret_message.zfill(len(self.secret_message))
         self._destroyed = True
 
