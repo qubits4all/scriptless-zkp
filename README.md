@@ -15,7 +15,7 @@ all liability related to its use.
 ### Functional Existing Modules
 **NOTE:** R&D-only Status (see above disclaimer)
 
-- **Schnorr Signatures on Elliptic Curves** (`scriptless_zkp.ecc.schnorr`)
+- **Schnorr Signatures on Elliptic Curves** [`scriptless_zkp.ecc.schnorr`]
   - Currently supported (Weierstrass) prime-order curves:
     - **NIST P-256** (`secp256r1`)
   - TODO: Planned support for (Weierstrass) prime-order curves:
@@ -23,7 +23,9 @@ all liability related to its use.
     - NIST P-521 (`secp521r1`)
   - TODO: Planned support for curve(s), pending support in a backing dependency:
     - `secp256k1` (used for ECDSA on Bitcoin & Ethereum blockchains)
-- **HMAC-based & Blake2b-based Keyed Hash Cryptographic Commitments** (`scriptless_zkp.commitments.hmac_commitments`)
+- **HMAC-based & Blake2b-based Keyed Hash Cryptographic Commitments** [`scriptless_zkp.commitments.hmac_commitments`]
+- **Non-interactive Zero-Knowledge** (NIZK) **Proofs of Knowledge** (PoKs) **of Discrete Logarithms** (over Elliptic
+Curves) [`scriptless_zkp.ecc.zkp`]
 
 ### Planned Future Work & Coming Soon
 
@@ -32,8 +34,8 @@ all liability related to its use.
 - **Two-Party ECC Schnorr Signatures**
   - Including distributed multi-party computation of joint public key & private key-shares, and ZKP-based
   detection of deviations from correct protocol operation by either party.
-- **Non-interactive Zero-Knowledge** (NIZK) **Proofs of Knowledge** (PoKs) **of Discrete Logarithms** (over Elliptic
-Curves)
+- ~~Non-interactive Zero-Knowledge (NIZK) Proofs of Knowledge (PoKs) of Discrete Logarithms (over Elliptic
+Curves)~~
 - **NIZK Proofs of Knowledge** (PoKs) **of _Equal_ Discrete Logarithms**
 (based on the [Chaum-Pedersen protocol](https://link.springer.com/content/pdf/10.1007/3-540-48071-4_7.pdf))
 
