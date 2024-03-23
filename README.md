@@ -23,10 +23,12 @@ all liability related to its use.
     - NIST P-521 (`secp521r1`)
   - TODO: Planned support for curve(s), pending support in a backing dependency:
     - `secp256k1` (used for ECDSA on Bitcoin & Ethereum blockchains)
+- **HMAC-based & Blake2b-based Keyed Hash Cryptographic Commitments** (`scriptless_zkp.commitments.hmac_commitments`)
 
 ### Planned Future Work & Coming Soon
 
 #### Coming Soon:
+- ~~HMAC-based Cryptographic Commitments~~
 - **Two-Party ECC Schnorr Signatures**
   - Including distributed multi-party computation of joint public key & private key-shares, and ZKP-based
   detection of deviations from correct protocol operation by either party.
@@ -34,7 +36,6 @@ all liability related to its use.
 Curves)
 - **NIZK Proofs of Knowledge** (PoKs) **of _Equal_ Discrete Logarithms**
 (based on [Chaum/Pedersen protocol](https://link.springer.com/content/pdf/10.1007/3-540-48071-4_7.pdf))
-- **HMAC-based Cryptographic Commitments**
 
 #### Planned Future Work:
 - **Pedersen Commitments** & **Vector Pedersen Commitments** (on Elliptic Curves)
