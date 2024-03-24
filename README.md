@@ -6,8 +6,8 @@
 This Git repo has been constructed for organizing research and development (R&D) into cryptographic protocols,
 including multi-party signatures, adaptor signatures, zero-knowledge proofs, and "scriptless" scripts.
 
-An additional research focus is on applications to cross-blockchain operations, including blockchain-agnostic atomic
-swaps and zero-knowledge contingent payment (ZKCP) protocols.
+An additional research focus is on applications to cross-blockchain operations, including [blockchain-agnostic
+(universal) atomic swaps](https://eprint.iacr.org/2021/1612) and zero-knowledge contingent payment (zkCP) protocols.
 
 **DISCLAIMER:** This codebase is presently in an early pre-Alpha version status focused on R&D, has _**not**_ yet
 undergone any in-depth security audits, and as such should _**not**_ be used in any Production system.
