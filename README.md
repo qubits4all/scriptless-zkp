@@ -1,37 +1,41 @@
-## Scriptless-ZKP
+# Scriptless-ZKP
 
-### Cryptographic protocols R&D: Adaptor & multi-party signatures, ZK proofs and "scriptless" scripts
+## Cryptographic Protocols R&D
+### Adaptor & multi-party signatures, zero-knowledge proofs (ZKPs) & "scriptless" scripts
 
 This Git repo has been constructed for organizing research and development (R&D) into cryptographic protocols,
 including multi-party signatures, adaptor signatures, zero-knowledge proofs, and "scriptless" scripts.
-An additional focus is on applications to cross-blockchain operations, including blockchain-agnostic atomic swaps.
+
+An additional research focus is on applications to cross-blockchain operations, including blockchain-agnostic atomic
+swaps and zero-knowledge contingent payment (ZKCP) protocols.
 
 **DISCLAIMER:** This codebase is presently in an early pre-Alpha version status focused on R&D, has _**not**_ yet
 undergone any in-depth security audits, and as such should _**not**_ be used in any Production system.
-Please refer to the attached Mozilla Public License v2.0
-([LICENSE](https://github.com/qubits4all/scriptless-zkp/blob/develop/LICENSE)) for an associated disclaimer of any and
-all liability related to its use.
+- Please refer to the attached Mozilla Public License v2.0 ([LICENSE](https://github.com/qubits4all/scriptless-zkp/blob/develop/LICENSE)) for an associated disclaimer of any and
+all liability or warrantability related to its use.
 
 ### Functional Existing Modules
 **NOTE:** R&D-only Status (see above disclaimer)
 
-- **Schnorr Signatures on Elliptic Curves** [`scriptless_zkp.ecc.signatures.schnorr`]
+- **Schnorr Signatures on Elliptic Curves** (ECC Schnorr) [`scriptless_zkp.ecc.signatures.schnorr`]
   - Currently supported (Weierstrass) prime-order curves: **NIST P-256** (`secp256r1`)
 - **HMAC-based & Blake2b-based Keyed Hash Cryptographic Commitments** [`scriptless_zkp.commitments.hmac_commitments`]
-- **Non-interactive Zero-Knowledge** (NIZK) **Proofs of Knowledge** (PoKs) **of Discrete Logarithms** (over Elliptic
+- **Non-Interactive Zero-Knowledge** (NIZK) **Proofs of Knowledge** (PoKs) **of Discrete Logarithms** (over Elliptic
 Curves) [`scriptless_zkp.ecc.zkp`]
-- **Two-Party ECC Schnorr Signatures** (w/ indistinguishability from ECC Schnorr signatures) [`scriptless_zkp.ecc.signatures.two_party_schnorr`]
+- **Two-Party ECC Schnorr Signatures** (w/ indistinguishability from single-party ECC Schnorr signatures)
+[`scriptless_zkp.ecc.signatures.two_party_schnorr`]
 
 ### Planned Future Work & Coming Soon
 
 #### Coming Soon:
 - ~~HMAC-based Cryptographic Commitments~~
 - ~~Two-Party ECC Schnorr Signatures~~
-- ~~Non-interactive Zero-Knowledge (NIZK) Proofs of Knowledge (PoKs) of Discrete Logarithms (over Elliptic
+- ~~Non-Interactive Zero-Knowledge (NIZK) Proofs of Knowledge (PoKs) of Discrete Logarithms (over Elliptic
 Curves)~~
 - **NIZK Proofs of Knowledge** (PoKs) **of _Equal_ Discrete Logarithms**
 (based on the [Chaum-Pedersen protocol](https://link.springer.com/content/pdf/10.1007/3-540-48071-4_7.pdf))
-- Support additional prime-order elliptic curves (ECC Schnorr, Two-Party ECC Schnorr and NIZK PoKs of Discrete Log):
+- Support additional prime-order elliptic curves (ECC Schnorr, Two-Party ECC Schnorr and NIZK PoKs of Discrete Log
+modules):
   - NIST P-384 (`secp384r1`)
   - NIST P-521 (`secp521r1`)
 
