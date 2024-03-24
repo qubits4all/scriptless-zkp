@@ -1,6 +1,6 @@
 # Scriptless-ZKP
 
-## Cryptographic Protocols R&D
+## Cryptographic Protocols & Blockchain-Agnostic Protocols R&D
 ### Adaptor & multi-party signatures, zero-knowledge proofs (ZKPs) & "scriptless" scripts
 
 This Git repo has been constructed for organizing research and development (R&D) into cryptographic protocols,
