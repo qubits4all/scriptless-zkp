@@ -2,6 +2,13 @@
 Provides an interactive signing protocol supporting two-party Schnorr signatures, a supporting distributed key
 generation protocol for collaboratively generating private key-shares and a joint public key, and a signature verifier
 for verifying such two-party Schnorr signatures using the joint public key.
+
+- Featuring 2/2 multi-signatures indistinguishable from single-party ECC Schnorr signatures, and non-interactive
+  verification via a joint public key.
+- Including distributed multi-party computation of a hardened joint public key & hardened public/private key-shares,
+  with protection against public key-share subtraction attacks.
+- Both protocols feature detection of deviations from correct protocol operation by either party with abort, via ZKPs
+  with commitments.
 """
 from __future__ import annotations
 
