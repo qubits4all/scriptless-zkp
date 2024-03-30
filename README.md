@@ -20,7 +20,7 @@ all liability or warrantability related to its use.
 - **Schnorr Signatures on Elliptic Curves** (ECC Schnorr)
 [[scriptless_zkp.ecc.signatures.schnorr](https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/ecc/signatures)]
   - Currently supported (Weierstrass) prime-order curves: **NIST P-256** (`secp256r1`)
-- **HMAC-based & Blake2b-based Keyed Hash Cryptographic Commitments**
+- **HMAC-based & Blake2b-based Keyed-Hash Commitments**
 [[scriptless_zkp.commitments.hmac_commitments](https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/commitments)]
 - **Non-Interactive Zero-Knowledge** (NIZK) **Proofs of Knowledge** (PoKs) **of Discrete Logarithms** (over Elliptic
 Curves)
@@ -31,7 +31,7 @@ Curves)
 ### Planned Future Work & Coming Soon
 
 #### Coming Soon:
-- ~~HMAC-based Cryptographic Commitments~~
+- ~~HMAC-based Commitments~~
 - ~~Two-Party ECC Schnorr Signatures~~
 - ~~Non-Interactive Zero-Knowledge (NIZK) Proofs of Knowledge (PoKs) of Discrete Logarithms (over Elliptic
 Curves)~~
