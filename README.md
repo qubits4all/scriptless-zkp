@@ -17,13 +17,16 @@ all liability or warrantability related to its use.
 ### Functional Existing Modules
 **NOTE:** R&D-only Status (see above disclaimer)
 
-- **Schnorr Signatures on Elliptic Curves** (ECC Schnorr) [`scriptless_zkp.ecc.signatures.schnorr`]
+- **Schnorr Signatures on Elliptic Curves** (ECC Schnorr)
+[[scriptless_zkp.ecc.signatures.schnorr](https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/ecc/signatures/schnorr.py)]
   - Currently supported (Weierstrass) prime-order curves: **NIST P-256** (`secp256r1`)
-- **HMAC-based & Blake2b-based Keyed Hash Cryptographic Commitments** [`scriptless_zkp.commitments.hmac_commitments`]
+- **HMAC-based & Blake2b-based Keyed Hash Cryptographic Commitments**
+[[scriptless_zkp.commitments.hmac_commitments](https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/commitments/hmac_commitments.py)]
 - **Non-Interactive Zero-Knowledge** (NIZK) **Proofs of Knowledge** (PoKs) **of Discrete Logarithms** (over Elliptic
-Curves) [`scriptless_zkp.ecc.zkp`]
+Curves)
+[[scriptless_zkp.ecc.zkp](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc/zkp)]
 - **Two-Party ECC Schnorr Signatures** (w/ indistinguishability from single-party ECC Schnorr signatures)
-[`scriptless_zkp.ecc.signatures.two_party_schnorr`]
+[[scriptless_zkp.ecc.signatures.two_party_schnorr](https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/ecc/signatures/two_party_schnorr.py)]
 
 ### Planned Future Work & Coming Soon
 
