@@ -12,8 +12,7 @@ from __future__ import annotations
 import base64
 import hashlib
 
-from collections import OrderedDict
-from typing import OrderedDict, NewType
+from typing import NewType, Tuple
 
 from Cryptodome.PublicKey import ECC
 from Cryptodome.Util import number
@@ -35,6 +34,13 @@ NIZKEqualDiscreteLogsProofHash = NewType('NIZKEqualDiscreteLogsProofHash', int)
 """
 Efficient type for the NIZK proof's public hash, which auto-casts to an `int`, but not from an `int, providing type
 safety in function & method calls (i.e., where other int-typed parameters may be present).
+"""
+
+ECCDiscreteLogBaseAndProduct = NewType('ECCDiscreteLogBaseAndProduct', Tuple[ECC.EccPoint, ECC.EccPoint])
+"""
+Efficient type for an ECC base point/reference (product) point pair (i.e., where `ref_point := dlog * base_point`),
+such that knowledge of the discrete logarithm (witness) being proven is the discrete log of the reference point with
+respect to this base point.
 """
 
 
@@ -78,7 +84,7 @@ class NIZKEqualDiscreteLogsContext:
             hash_algorithm: str
     ) -> NIZKEqualDiscreteLogsProofHash:
         # Verify we have the required nonce point per dlog base/ref. point pair.
-        assert len(secret_nonce_points) == len(discrete_log_params_set.dlog_ref_points_by_base)
+        assert len(secret_nonce_points) == len(discrete_log_params_set.dlog_base_and_ref_points)
 
         # Init. a truncated hasher for hashing to bit-length of elliptic curve sub-group's order (i.e., `|<G>|`), and
         # use a domain separation tag to ensure distinct hashes from other uses of SHA3-256.
@@ -91,7 +97,7 @@ class NIZKEqualDiscreteLogsContext:
         # Hash each pair of discrete log base and reference points (where each `ref_point := dlog * dlog_base`), using
         # the 'SEC1' binary encoding for each EC point w/out point compression (in order to retain each EC point's
         # y-coordinate's entropy).
-        for dlog_base, dlog_ref_point in discrete_log_params_set.dlog_ref_points_by_base.items():
+        for dlog_base, dlog_ref_point in discrete_log_params_set.dlog_base_and_ref_points:
             hasher.update(self.encode_ecc_point(dlog_base))
             hasher.update(self.encode_ecc_point(dlog_ref_point))
 
@@ -133,21 +139,21 @@ class NIZKDiscreteLogParameterSet:
     MIN_DISCRETE_LOGS: int = 1  # Note: This protocol generalizes to the single discrete case.
 
     curve_config: WeierstrassEllipticCurveConfig
-    dlog_ref_points_by_base: OrderedDict[ECC.EccPoint, ECC.EccPoint]
+    dlog_base_and_ref_points: list[ECCDiscreteLogBaseAndProduct]
     hash_algo: str
 
     def __init__(
             self,
             curve_config: WeierstrassEllipticCurveConfig,
-            dlog_ref_points_by_base: OrderedDict[ECC.EccPoint, ECC.EccPoint],
+            dlog_base_and_ref_points: list[ECCDiscreteLogBaseAndProduct],
             hash_algorithm: str = NIZKEqualDiscreteLogsContext.DEFAULT_HASH_ALGORITHM
     ):
         # Ensure the minimum number of dlog base/dlog ref. point pairs were provided.
-        assert len(dlog_ref_points_by_base) >= NIZKDiscreteLogParameterSet.MIN_DISCRETE_LOGS
+        assert len(dlog_base_and_ref_points) >= NIZKDiscreteLogParameterSet.MIN_DISCRETE_LOGS
 
         self.curve_config = curve_config
         self.hash_algo = hash_algorithm
-        self.dlog_ref_points_by_base = dlog_ref_points_by_base
+        self.dlog_base_and_ref_points = dlog_base_and_ref_points
 
     def encode_as_string(self) -> str:
         """
@@ -165,10 +171,10 @@ class NIZKDiscreteLogParameterSet:
 
         # Indicate how many discrete logs are being proven equal (i.e., to simplify decoding of the variable-length
         # parameter-set).
-        dlogs_count_field: str = f"dlogs_count={len(self.dlog_ref_points_by_base)}"
+        dlogs_count_field: str = f"dlogs_count={len(self.dlog_base_and_ref_points)}"
         encoded_params.append(dlogs_count_field)
 
-        for (dlog_base, dlog_ref_point) in self.dlog_ref_points_by_base.items():
+        for dlog_base, dlog_ref_point in self.dlog_base_and_ref_points:
             dlog_base_SEC1: bytes = context.encode_ecc_point(dlog_base)
             dlog_base_base64: str = base64.b64encode(dlog_base_SEC1).decode('utf-8')
             encoded_params.append(dlog_base_base64)
@@ -206,7 +212,7 @@ class NIZKEqualDiscreteLogsProof:
         # & public hash scalars (as `nonce_pt_i := proof_sig * base_pt_i + proof_pub_hash * ref_pt_i`, for i in [1,N]),
         # according to the Chaum-Pedersen protocol (adapted for discrete logs over elliptic curves).
         nonce_points: list[ECC.EccPoint] = []
-        for (dlog_base, dlog_ref_point) in self.discrete_log_params_set.dlog_ref_points_by_base.items():
+        for dlog_base, dlog_ref_point in self.discrete_log_params_set.dlog_base_and_ref_points:
             nonce_point: ECC.EccPoint = dlog_base * self.proof_signature + dlog_ref_point * self.proof_pub_hash
             nonce_points.append(nonce_point)
 
@@ -279,7 +285,7 @@ class NIZKEqualDiscreteLogsProver:
         # Construct a nonce point for each provided discrete log base (as `nonce_point := nonce * base_point`),
         # using the same nonce for each point's construction (i.e., a common dlog for each nonce point).
         nonce_points: list[ECC.EccPoint] = []
-        for base_point in discrete_log_params_set.dlog_ref_points_by_base.keys():
+        for base_point, _ in discrete_log_params_set.dlog_base_and_ref_points:
             nonce_point: ECC.EccPoint = base_point * private_nonce
             nonce_points.append(nonce_point)
 
