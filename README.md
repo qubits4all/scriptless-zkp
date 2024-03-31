@@ -19,18 +19,18 @@ all liability or warrantability related to its use.
 
 **NOTE:** R&D-only Status (see above disclaimer)
 
-- **Digital Signatures** (single-party) [[scriptless_zkp.ecc.signatures](
-https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/ecc/signatures)]
+#### Digital Signatures (single-party) [[scriptless_zkp.ecc.signatures](https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/ecc/signatures)]
   - **Schnorr Signatures on Elliptic Curves** (ECC Schnorr) [`scriptless_zkp.ecc.signatures.schnorr`]
     - Currently supported (Weierstrass) prime-order elliptic curves: **NIST P-256** (`secp256r1`)
-- **Two-Party Digital Signatures**  [[scriptless_zkp.ecc.signatures](
-https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/ecc/signatures)]
+
+#### Two-Party Digital Signatures  [[scriptless_zkp.ecc.signatures](https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/ecc/signatures)]
   - **Two-Party ECC Schnorr Signatures** [`scriptless_zkp.ecc.signatures.two_party_schnorr`]
     - Features verification via a joint public key & indistinguishability from single-party ECC Schnorr signatures.
-- **Cryptographic Commitments** [[scriptless_zkp.commitments](
-https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/commitments)]
+
+#### Cryptographic Commitments [[scriptless_zkp.commitments](https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/commitments)]
   - **HMAC-based & Blake2b-based Keyed-Hash Commitments** [`scriptless_zkp.commitments.hmac_commitments`]
-- **Non-Interactive Zero-Knowledge (NIZK) Proofs** (over Elliptic Curves) [[scriptless_zkp.ecc.zkp](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc/zkp)]
+
+#### Non-Interactive Zero-Knowledge (NIZK) Proofs (over Elliptic Curves) [[scriptless_zkp.ecc.zkp](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc/zkp)]
   - **NIZK Proofs of Knowledge** (PoKs) **of a Discrete Logarithm** [`scriptless_zkp.ecc.zkp.nizk_dlog_proof`]
   - **NIZK Proofs of Knowledge** (PoKs) **of _Equal_ Discrete Logarithms**
   [`scriptless_zkp.ecc.zkp.nizk_equal_dlogs_proof`]
@@ -41,6 +41,7 @@ https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_
   [`scriptless_zkp.ecc.zkp.nizk_dlog_proof_commitments`]
     - Combines an NIZK proof and a cryptographic commitment to the proof & its public parameters, which is useful in
     multi-party protocols involving ZK proofs (e.g., for ensuring correct protocol execution by each party).
+
 
 ### Planned Future Work & Coming Soon
 
