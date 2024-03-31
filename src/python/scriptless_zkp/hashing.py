@@ -15,7 +15,12 @@ class PrimeLengthTruncatedHasher:
     Hasher that produces a truncated cryptographic hash matching the bit-length of a specified prime, such as the prime
     corresponding to a prime-order field. Only the most-significant N bits are retained, where N is the bit-length of
     the given prime.
-    Note: This class is not thread-safe.
+
+    Note: This technique is used by the ECDSA standard (NIST FIPS-186.5) for elliptic curve digital signatures,
+    for example.
+
+    Note: This class is not thread-safe. (Use a thread-local for a hasher instance per thread, if needed in a
+    multithreading context.)
     """
     DEFAULT_HASH_ALGO: str = hashlib.sha256().name
 
