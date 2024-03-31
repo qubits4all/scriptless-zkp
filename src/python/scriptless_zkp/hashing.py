@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import hashlib
 
+from typing import Optional, Any
+
 from Cryptodome.Util import number
 
 from scriptless_zkp.exceptions import InvalidHasherStateException
@@ -19,12 +21,27 @@ class PrimeLengthTruncatedHasher:
     Note: This technique is used by the ECDSA standard (NIST FIPS-186.5) for elliptic curve digital signatures,
     for example.
 
+    This class supports the use of an optional domain separation tag, for ensuring hashing the same message in one
+    domain produces a distinct hash when hashed in a different domain (e.g., a digital signature scheme vs. a
+    zero-knowledge proof protocol).
+
     Note: This class is not thread-safe. (Use a thread-local for a hasher instance per thread, if needed in a
     multithreading context.)
     """
     DEFAULT_HASH_ALGO: str = hashlib.sha256().name
 
-    def __init__(self, prime_for_length: int, hash_algorithm: str = DEFAULT_HASH_ALGO):
+    hash_algo: str
+    bit_length: int
+    nontruncated_bit_length: int
+    domain_separator: Optional[str]
+    _hasher: Optional[Any] = None  # hasher as obtained via hashlib.new(hash_algo)
+
+    def __init__(
+            self,
+            prime_for_length: int,
+            hash_algorithm: str = DEFAULT_HASH_ALGO,
+            domain_separation_tag: Optional[str] = None
+    ):
         """
         Constructs a truncated hasher, based on the specified cryptographic hash algorithm and prime.
 
@@ -35,6 +52,7 @@ class PrimeLengthTruncatedHasher:
                 bit-length larger than the chosen hash algorithm's digest size in bits.
         """
         self.hash_algo: str = hash_algorithm
+        self.domain_separator = domain_separation_tag
 
         self.bit_length: int = prime_for_length.bit_length()  # e.g., 17 is 5 bits in length
 
@@ -49,11 +67,14 @@ class PrimeLengthTruncatedHasher:
                 f"{self.nontruncated_bit_length}"
             )
 
-        self._hasher = None
-
     def update(self, message: bytes) -> PrimeLengthTruncatedHasher:
+        # Lazily initialize hasher, to simplify invalid state detection re: digest(), intdigest() & hexdigest() methods.
         if self._hasher is None:
             self._hasher = hashlib.new(self.hash_algo)
+
+            # Initialize hasher state with hash of a domain separation tag, if one was provided.
+            if self.domain_separator:
+                self._hasher.update(self.domain_separator.encode('utf-8'))
 
         self._hasher.update(message)
 
@@ -104,7 +125,7 @@ class PrimeLengthTruncatedHasher:
         :param message: a message to be hashed.
         :return: a truncated cryptographic hash with the bit-length of a configured prime, returned as an integer.
         """
-        full_hash_bytes: bytes = hashlib.new(self.hash_algo, message).digest()
+        full_hash_bytes: bytes = self._hash_to_bytes_pretruncate(message)
         full_hash: int = number.bytes_to_long(full_hash_bytes)
 
         if self.bit_length < self.nontruncated_bit_length:
@@ -120,7 +141,7 @@ class PrimeLengthTruncatedHasher:
         :param message: a message to be hashed.
         :return: a truncated cryptographic hash with the bit-length of a configured prime.
         """
-        full_hash_bytes: bytes = hashlib.new(self.hash_algo, message).digest()
+        full_hash_bytes: bytes = self._hash_to_bytes_pretruncate(message)
         full_hash: int = number.bytes_to_long(full_hash_bytes)
 
         if self.bit_length < self.nontruncated_bit_length:
@@ -132,3 +153,16 @@ class PrimeLengthTruncatedHasher:
 
     def hash_to_hex(self, message: bytes) -> str:
         return self.hash(message).hex()
+
+    def _hash_to_bytes_pretruncate(self, message: bytes) -> bytes:
+        # Initialize hasher state with hash of a domain separation tag, if one was provided.
+        if self.domain_separator:
+            hasher = hashlib.new(self.hash_algo)
+            hasher.update(self.domain_separator.encode('utf-8'))
+            hasher.update(message)
+            full_hash_bytes: bytes = hasher.digest()
+        else:
+            # Otherwise, calculate hash in one shot.
+            full_hash_bytes: bytes = hashlib.new(self.hash_algo, message).digest()
+
+        return full_hash_bytes
