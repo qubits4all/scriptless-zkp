@@ -167,8 +167,9 @@ class NIZKEqualDiscreteLogsProver:
         # curve sub-group's order `q` (i.e., `self.order`).
         pub_hash: NIZKEqualDiscreteLogsProofHash = self.common.calc_public_hash(discrete_log_params_set, nonce_points)
 
-        # Calculate the NIZK PoK as: `sig := ephemeral_key - pub_hash * dlog` (note: w/out modular reduction)
-        proof_signature: int = private_nonce - int(pub_hash) * discrete_log
+        # Calculate the NIZK proof of knowledge (PoK) (as: `sig := ephemeral_key - pub_hash * dlog mod q`), according
+        # to the Chaum-Pedersen protocol (adapted for discrete logs over elliptic curves).
+        proof_signature: int = (private_nonce - int(pub_hash) * discrete_log) % self.order
 
         return NIZKEqualDiscreteLogsProof(
             discrete_log_params_set,
