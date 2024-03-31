@@ -50,20 +50,47 @@ class NIZKDiscreteLogParametersSet:
 
 
 class NIZKEqualDiscreteLogsProof:
+    common: NIZKEqualDiscreteLogsCommon
     discrete_log_params_set: NIZKDiscreteLogParametersSet
     proof_pub_hash: NIZKEqualDiscreteLogsProofHash
     proof_signature: NIZKEqualDiscreteLogsProofSignature
+    hash_algo: str
 
     def __init__(
             self,
             discrete_log_params_set: NIZKDiscreteLogParametersSet,
             proof_public_hash: NIZKEqualDiscreteLogsProofHash,
-            proof_signature: NIZKEqualDiscreteLogsProofSignature
+            proof_signature: NIZKEqualDiscreteLogsProofSignature,
+            hash_algorithm: str
     ):
         self.curve_config = discrete_log_params_set.curve_config
+        self.hash_algo = hash_algorithm
+        self.common = NIZKEqualDiscreteLogsCommon(
+            discrete_log_params_set.curve_config,
+            hash_algorithm
+        )
         self.discrete_log_params_set = discrete_log_params_set
         self.proof_pub_hash = proof_public_hash
         self.proof_signature = proof_signature
+
+    def verify(self) -> bool:
+        # Reconstruct each nonce point from the corresponding EC base & reference points, and the ZK proof's signature
+        # & public hash scalars (as `nonce_pt_i := proof_sig * base_pt_i + proof_pub_hash * ref_pt_i`, for i in [1,N]),
+        # according to the Chaum-Pedersen protocol (adapted for discrete logs over elliptic curves).
+        nonce_points: list[ECC.EccPoint] = []
+        for (dlog_base, dlog_ref_point) in self.discrete_log_params_set.dlog_ref_points_by_base.items():
+            nonce_point: ECC.EccPoint = dlog_base * self.proof_signature + dlog_ref_point * self.proof_pub_hash
+            nonce_points.append(nonce_point)
+
+        # Recalculate the ZK proof's public hash via the reconstructed nonce points, and the provided corresponding
+        # pairs of EC base & reference points (provided via this ZK proof object's NIZKDiscreteLogParametersSet field).
+        expected_pub_hash: NIZKEqualDiscreteLogsProofHash = self.common.calc_public_hash(
+            self.discrete_log_params_set,
+            nonce_points
+        )
+
+        # The ZK proof is valid if the recalculated public hash equals the proof's public hash.
+        return expected_pub_hash == self.proof_pub_hash
 
 
 class NIZKEqualDiscreteLogsCommon:
@@ -174,5 +201,6 @@ class NIZKEqualDiscreteLogsProver:
         return NIZKEqualDiscreteLogsProof(
             discrete_log_params_set,
             pub_hash,
-            NIZKEqualDiscreteLogsProofSignature(proof_signature)
+            NIZKEqualDiscreteLogsProofSignature(proof_signature),
+            hash_algorithm=self.common.hash_algo
         )
