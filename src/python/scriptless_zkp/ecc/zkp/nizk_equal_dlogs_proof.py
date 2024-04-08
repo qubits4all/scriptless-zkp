@@ -231,12 +231,21 @@ class NIZKEqualDiscreteLogsProof:
         self.proof_signature = proof_signature
 
     def verify(self) -> bool:
+        # Reject an invalid ZK proof (i.e., where the proof's public hash or signature is zero).
+        if int(self.proof_pub_hash) == 0 or int(self.proof_signature) == 0:
+            return False
+
         # Reconstruct each nonce point from the corresponding EC base & reference points, and the ZK proof's signature
         # & public hash scalars (as `nonce_pt_i := proof_sig * base_pt_i + proof_pub_hash * ref_pt_i`, for i in [1,N]),
         # according to the Chaum-Pedersen protocol (adapted for discrete logs over elliptic curves).
         nonce_points: list[ECC.EccPoint] = []
         for dlog_base, dlog_ref_point in self.discrete_log_params_set.dlog_base_and_ref_points:
             nonce_point: ECC.EccPoint = dlog_base * self.proof_signature + dlog_ref_point * self.proof_pub_hash
+
+            # A nonce point may not equal the point-at-infinity.
+            if nonce_point.is_point_at_infinity():
+                return False
+
             nonce_points.append(nonce_point)
 
         # Recalculate the ZK proof's public hash via the reconstructed nonce points, and the provided corresponding
