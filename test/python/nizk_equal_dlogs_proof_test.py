@@ -1,3 +1,17 @@
+###############################################################################
+# (c) 2024 W. Spann Systems Consulting
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+###############################################################################
+
 from __future__ import annotations
 
 import unittest
@@ -35,6 +49,7 @@ class NIZKEqualDiscreteLogsProofTests(unittest.TestCase):
         zk_proof: NIZKEqualDiscreteLogsProof = prover.calc_proof(self.common_dlog, self.dlog_params_set)
 
         self.assertIsNotNone(zk_proof)
+        print(f"NIZK Equal Discrete Logs Proof: {zk_proof}\n")
         self.assertIsInstance(zk_proof, NIZKEqualDiscreteLogsProof)
 
         self.assertIsInstance(zk_proof.context, NIZKEqualDiscreteLogsContext)
@@ -53,6 +68,10 @@ class NIZKEqualDiscreteLogsProofTests(unittest.TestCase):
     def test_proof_verification(self):
         prover = NIZKEqualDiscreteLogsProver(self.context.curve_config)
         zk_proof: NIZKEqualDiscreteLogsProof = prover.calc_proof(self.common_dlog, self.dlog_params_set)
+
+        self.assertIsNotNone(zk_proof)
+        print(f"NIZK Equal Discrete Logs Proof: {zk_proof}\n")
+        self.assertIsInstance(zk_proof, NIZKEqualDiscreteLogsProof)
 
         self.assertTrue(zk_proof.verify())
 

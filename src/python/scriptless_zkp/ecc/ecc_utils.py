@@ -56,3 +56,12 @@ def generate_random_nonce_pair(
     nonce_point: ECC.EccPoint = base_point * private_nonce
 
     return private_nonce, nonce_point
+
+
+def ecc_point_to_hex(ecc_point: ECC.EccPoint) -> str:
+    """
+    Encodes the provided ECC point for use in debugging messages, using hexadecimal encoding for each coordinate.
+    :param ecc_point: the ECC point to be encoded in hexadecimal.
+    :return: a string representation of the ECC point, with each coordinate encoded in hexadecimal.
+    """
+    return f"({hex(ecc_point.x)}, {hex(ecc_point.y)})"
