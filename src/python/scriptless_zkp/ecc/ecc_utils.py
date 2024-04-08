@@ -1,3 +1,17 @@
+###############################################################################
+# (c) 2024 W. Spann Systems Consulting
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+###############################################################################
+
 """
 Helper functions for working with the elliptic curves used in elliptic curve cryptography (ECC).
 """
@@ -38,7 +52,7 @@ def generate_random_nonce_pair(
              the provided EC base point (or the configured curve's public generator `G` if not provided).
     """
     base_point: ECC.EccPoint = ecc_base_point if ecc_base_point else curve_config.base_point
-    private_nonce: int = generate_random_nonce(curve_config)  # random big integer in range [1, order] inclusive
+    private_nonce: int = generate_random_nonce(curve_config)  # random big integer in range [1, order-1] inclusive
     nonce_point: ECC.EccPoint = base_point * private_nonce
 
     return private_nonce, nonce_point

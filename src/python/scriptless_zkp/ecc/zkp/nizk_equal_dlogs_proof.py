@@ -1,3 +1,17 @@
+###############################################################################
+# (c) 2024 W. Spann Systems Consulting
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+###############################################################################
+
 """
 Provides a non-interactive zero-knowledge (NIZK) proof of knowledge (PoK) of N _equal_ discrete logarithms, over a
 prime-order elliptic curve group (e.g., NIST P-256).
@@ -111,19 +125,6 @@ class NIZKEqualDiscreteLogsContext:
 
         return NIZKEqualDiscreteLogsProofHash(pub_hash)
 
-    @staticmethod
-    def encode_public_key(public_key: ECC.EccKey) -> bytes:
-        if public_key.has_private():
-            return public_key.public_key().export_key(format='SEC1')
-        else:
-            return public_key.export_key(format='SEC1')
-
-    def encode_ecc_point(self, ecc_point: ECC.EccPoint) -> bytes:
-        return self.ecc_point_to_pubkey(ecc_point).export_key(format='SEC1')
-
-    def ecc_point_to_pubkey(self, ecc_point: ECC.EccPoint) -> ECC.EccKey:
-        return ECC.construct(curve=self.curve_config.curve, point_x=ecc_point.x, point_y=ecc_point.y)
-
     def generate_random_nonce(self) -> int:
         """
         Generates a random big integer in the range `[1, q-1]` inclusive, where `q` is the configured elliptic curve
@@ -132,6 +133,29 @@ class NIZKEqualDiscreteLogsContext:
                  sub-group's order.
         """
         return generate_random_nonce(self.curve_config)
+
+    @staticmethod
+    def encode_public_key(public_key: ECC.EccKey) -> bytes:
+        if public_key.has_private():
+            return public_key.public_key().export_key(format='SEC1')
+        else:
+            return public_key.export_key(format='SEC1')
+
+    def ecc_point_to_pubkey(self, ecc_point: ECC.EccPoint) -> ECC.EccKey:
+        return ECC.construct(curve=self.curve_config.curve, point_x=ecc_point.x, point_y=ecc_point.y)
+
+    def encode_ecc_point(self, ecc_point: ECC.EccPoint, point_compression: bool = False) -> bytes:
+        """
+        Encodes the provided ECC point as a binary string, using the 'SEC1' format w/out point compression by default.
+        """
+        return self.ecc_point_to_pubkey(ecc_point).export_key(format='SEC1', compress=point_compression)
+
+    def base64_encode_ecc_point(self, ecc_point: ECC.EccPoint, point_compression: bool = False) -> str:
+        """
+        Base64-encodes the provided ECC point, using the 'SEC1' binary format w/out point compression by default.
+        """
+        ecc_point_SEC1: bytes = self.encode_ecc_point(ecc_point, point_compression=point_compression)
+        return base64.b64encode(ecc_point_SEC1).decode('utf-8')
 
 
 class NIZKDiscreteLogParameterSet:
@@ -175,13 +199,12 @@ class NIZKDiscreteLogParameterSet:
         encoded_params.append(dlogs_count_field)
 
         for dlog_base, dlog_ref_point in self.dlog_base_and_ref_points:
-            dlog_base_SEC1: bytes = context.encode_ecc_point(dlog_base)
-            dlog_base_base64: str = base64.b64encode(dlog_base_SEC1).decode('utf-8')
-            encoded_params.append(dlog_base_base64)
-
-            dlog_ref_point_SEC1: bytes = context.encode_ecc_point(dlog_ref_point)
-            dlog_ref_point_base64: str = base64.b64encode(dlog_ref_point_SEC1).decode('utf-8')
-            encoded_params.append(dlog_ref_point_base64)
+            encoded_params.append(
+                context.base64_encode_ecc_point(dlog_base)
+            )
+            encoded_params.append(
+                context.base64_encode_ecc_point(dlog_ref_point)
+            )
 
         return STRING_ENCODING_FIELD_DELIMITER.join(encoded_params)
 
@@ -253,6 +276,9 @@ class NIZKEqualDiscreteLogsProof:
             proof_signature_base64
         ])
 
+    def __str__(self) -> str:
+        return self.encode_as_string()
+
 
 class NIZKEqualDiscreteLogsProver:
     curve_config: WeierstrassEllipticCurveConfig
@@ -279,32 +305,63 @@ class NIZKEqualDiscreteLogsProver:
             discrete_log: int,
             discrete_log_params_set: NIZKDiscreteLogParameterSet
     ) -> NIZKEqualDiscreteLogsProof:
-        # Generate a private nonce (i.e., ephemeral private key), to be used for this single ZK proof only.
-        private_nonce: int = self.context.generate_random_nonce()
+        """
+        Generates a non-interactive zero-knowledge (NIZK) proof of knowledge (PoK) of N equal discrete logarithms,
+        given the (common) discrete logarithm to be proven equal, and a set of N discrete logarithm base/reference point
+        pairs (i.e., where `ref_point := dlog * dlog_base`).
+        :param discrete_log: the common discrete logarithm (witness) to be proven equal for each base/reference point
+               pair.
+        :param discrete_log_params_set: a set of N discrete log base/reference point pairs, for which each discrete log
+               is to be proven equal.
+        :return: a non-interactive zero-knowledge (NIZK) proof of knowledge (PoK) of N equal discrete logarithms.
+        """
 
-        # Construct a nonce point for each provided discrete log base (as `nonce_point := nonce * base_point`),
-        # using the same nonce for each point's construction (i.e., a common dlog for each nonce point).
-        nonce_points: list[ECC.EccPoint] = []
-        for base_point, _ in discrete_log_params_set.dlog_base_and_ref_points:
-            nonce_point: ECC.EccPoint = base_point * private_nonce
-            nonce_points.append(nonce_point)
+        # Generate a random nonce repeatedly until a valid ZK proof is constructed, which requires both the (truncated)
+        # public hash (as an integer) and the proof signature to be non-zero.
+        while True:
+            # Generate a private nonce (i.e., ephemeral private key), to be used for this single ZK proof only.
+            private_nonce: int = self.context.generate_random_nonce()
 
-        # Calculate the public hash as: `H_q( base_pt1, ref_pt1, base_pt2, ref_pt2, ..., nonce_pt1, nonce_pt2, ... )`,
-        # where H_q(...) is a cryptographic hash that has been truncated to the bit-length of the configured elliptic
-        # curve sub-group's order `q` (i.e., `self.order`).
-        pub_hash: NIZKEqualDiscreteLogsProofHash = self.context.calc_public_hash(
-            discrete_log_params_set,
-            nonce_points,
-            hash_algorithm=self.hash_algo
-        )
+            # Construct a nonce point for each provided discrete log base (as `nonce_point := nonce * base_point`),
+            # using the same nonce for each point's construction (i.e., a common dlog for each nonce point).
+            nonce_points: list[ECC.EccPoint] = []
+            for base_point, _ in discrete_log_params_set.dlog_base_and_ref_points:
+                nonce_point: ECC.EccPoint = base_point * private_nonce
 
-        # Calculate the NIZK proof of knowledge (PoK) (as: `sig := (ephemeral_key - pub_hash * dlog) mod q`), according
-        # to the Chaum-Pedersen protocol (adapted for discrete logs over elliptic curves).
-        proof_signature: int = (private_nonce - int(pub_hash) * discrete_log) % self.order
+                # Disallow the point-at-infinity as a nonce point.
+                if nonce_point.is_point_at_infinity():
+                    break
 
-        return NIZKEqualDiscreteLogsProof(
-            discrete_log_params_set,
-            pub_hash,
-            NIZKEqualDiscreteLogsProofSignature(proof_signature),
-            hash_algorithm=self.hash_algo
-        )
+                # Append the valid nonce point to the list of nonce points.
+                nonce_points.append(nonce_point)
+
+            # Nonce points generation (for-loop) completed normally (i.e., no break occurred), so proceed.
+            else:
+                # Ensure the number of nonce points matches the number of dlog base/ref. point pairs.
+                if len(nonce_points) != len(discrete_log_params_set.dlog_base_and_ref_points):
+                    continue
+                # Calculate public hash: `H_q( base_pt1, ref_pt1, base_pt2, ref_pt2, ..., nonce_pt1, nonce_pt2, ... )`,
+                # where H_q(...) is a cryptographic hash that has been truncated to the bit-length of the configured
+                # elliptic curve sub-group's order `q` (i.e., `self.order`).
+                pub_hash: NIZKEqualDiscreteLogsProofHash = self.context.calc_public_hash(
+                    discrete_log_params_set,
+                    nonce_points,
+                    hash_algorithm=self.hash_algo
+                )
+                # Ensure the (truncated) public hash (as an integer) is non-zero, otherwise retry nonce generation.
+                if int(pub_hash) == 0:
+                    continue
+
+                # Calculate the NIZK proof of knowledge (PoK) (as: `sig := (ephemeral_key - pub_hash * dlog) mod q`),
+                # according to the Chaum-Pedersen protocol (adapted for discrete logs over elliptic curves).
+                proof_signature: int = (private_nonce - int(pub_hash) * discrete_log) % self.order
+
+                # Ensure the proof signature is non-zero, otherwise retry nonce generation.
+                if proof_signature != 0:
+                    # Return the ZK proof, following construction of a valid proof signature.
+                    return NIZKEqualDiscreteLogsProof(
+                        discrete_log_params_set,
+                        pub_hash,
+                        NIZKEqualDiscreteLogsProofSignature(proof_signature),
+                        hash_algorithm=self.hash_algo
+                    )
