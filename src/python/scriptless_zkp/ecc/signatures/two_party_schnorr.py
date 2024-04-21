@@ -458,7 +458,7 @@ class TwoPartySchnorrSigner:
         # Ensure the Initiator-provided public nonce-share's ECC point is on the configured elliptic curve.
         if not self.context.verify_ecc_point(public_nonce_share):
             raise InvalidECCPointException(
-                ecc_curve_config=self.context.ecc_curve_config,
+                ecc_curve_name=self.context.ecc_curve_config.curve,
                 point_x=public_nonce_share.x,
                 point_y=public_nonce_share.y,
                 msg=f"Invalid public nonce-share received from 2-party ECC Schnorr signing sub-protocol's {party_str}"

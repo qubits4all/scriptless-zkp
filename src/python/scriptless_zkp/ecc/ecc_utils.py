@@ -21,8 +21,11 @@ from typing import Optional
 
 from Cryptodome.PublicKey import ECC
 from Cryptodome.Random import random
+from Cryptodome.Util import number
 
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
+from scriptless_zkp.hashing import UniversalPrimeLengthHasher
+from scriptless_zkp.number_theory import is_quadratic_residue, mod_sqrt
 
 
 def generate_random_nonce(curve_config: WeierstrassEllipticCurveConfig) -> int:
@@ -56,6 +59,141 @@ def generate_random_nonce_pair(
     nonce_point: ECC.EccPoint = base_point * private_nonce
 
     return private_nonce, nonce_point
+
+
+def generate_random_generator(
+        curve_config: WeierstrassEllipticCurveConfig,
+        nonce: int | None = None,
+        hash_algorithm: str = UniversalPrimeLengthHasher.DEFAULT_HASH_ALGO,
+        domain_separation_tag: str | None = None,
+        randomize_nonce: bool = False
+) -> ECC.EccPoint:
+    """
+    Generates a random elliptic curve (EC) generator point, in such a way that its discrete logarithm is unknown, using
+    the provided elliptic curve configuration.
+
+    Note: This algorithm does not run in constant-time, due to its use of a hunt-and-peck algorithm for finding valid
+    curve points. As such, it should not be used for constructing generator points based on a private key or other
+    secret or sensitive information (e.g., passed via the nonce parameter), since it may leak sensitive information
+    through timing side-channel attacks if improperly used in such a context.
+
+    :param curve_config: elliptic curve configuration to be used when generating the random EC generator point.
+    :param nonce: a unique nonce to be used when generating the random EC generator point. If not provided, and
+           `randomize_nonce` is set to True, a random nonce will be generated in the range `[1, q-1]`; otherwise no
+           nonce will be used.
+    :param hash_algorithm: cryptographic hash algorithm to be used for generating the random generator point.
+    :param domain_separation_tag: domain separation tag to be used for ensuring distinct hashes from other uses of the
+           the configured cryptographic hash algorithm.
+    :param randomize_nonce: flag indicating whether a random nonce should be generated if `nonce` is not provided.
+    :return: an elliptic curve generator point, for which its discrete logarithm is unknown, using the provided
+             elliptic curve configuration; or None if a valid generator point could not be found using the provided
+             nonce.
+    :raises ValueError: if a valid generator point could not be found using the provided nonce.
+    """
+    MAX_CANDIDATE_TWEAKS: int = 8  # Note: Must be a power of 2.
+
+    base_point_pub_key: ECC.EccKey = ECC.construct(
+        curve=curve_config.curve,
+        point_x=curve_config.base_point.x,
+        point_y=curve_config.base_point.y
+    )
+    base_point_pub_key_SEC1: bytes = base_point_pub_key.export_key(format="SEC1")
+
+    large_prime_p: int = number.getPrime(curve_config.curve_size_bytes * 8 + 1)
+
+    point_hasher = UniversalPrimeLengthHasher(
+        curve_config.modulus,  # elliptic curve's coefficients' prime modulus
+        large_prime_p,         # large prime number for hashing
+        hash_algorithm=hash_algorithm,
+        domain_separation_tag=domain_separation_tag
+    )
+    if domain_separation_tag is not None:
+        point_hasher.update(domain_separation_tag.encode('utf-8'))
+
+    point_hasher.update(base_point_pub_key_SEC1)
+    if nonce is not None:
+        # Calc. hash of `H_p(G || nonce)` to generate a candidate x-coordinate for the generator point.
+        point_hasher.update(nonce.to_bytes(curve_config.curve_size_bytes, byteorder='big'))
+    elif randomize_nonce:
+        # Generate a random nonce in the range [1, q-1], where q is the curve's sub-group's order (i.e., `o(G)`).
+        nonce: int = generate_random_nonce(curve_config)
+        point_hasher.update(nonce.to_bytes(curve_config.curve_size_bytes, byteorder='big'))
+
+    x_coord_candidate: int = point_hasher.intdigest()
+
+    x_coord_least_sig_bits: int = x_coord_candidate & (MAX_CANDIDATE_TWEAKS - 1)  # e.g., least significant 3 bits
+
+    x_coord: int = x_coord_candidate
+    for i in range(-1, MAX_CANDIDATE_TWEAKS):
+        if i >= 0 and i != x_coord_least_sig_bits:
+            # Munge x-coordinate candidate by replacing last 3 least-significant bits with the bits of i.
+            mask: int = _generate_x_coordinate_mask(curve_config)
+            x_coord: int = x_coord_candidate & mask | i
+
+        y_squared: int = _check_x_coordinate_is_on_curve(curve_config, x_coord)
+        if y_squared is not None:
+            y_coord: int = mod_sqrt(y_squared, curve_config.modulus)
+            generator = ECC.EccPoint(x_coord, y_coord, curve_config.curve)
+
+            if not generator.is_point_at_infinity():
+                return generator
+            else:
+                continue
+    else:
+        raise ValueError(f"Failed to generate a valid generator point H := H_p(G || nonce) for nonce: {nonce}")
+
+
+def _hunt_and_peck_for_generator(
+        curve_config: WeierstrassEllipticCurveConfig,
+        x_coordinate_candidate: int,
+        max_tweaks: int = 8
+) -> ECC.EccPoint | None:
+    x_coord_least_sig_bits: int = x_coordinate_candidate & (max_tweaks - 1)  # e.g., least significant 3 bits
+
+    x_coord: int = x_coordinate_candidate
+    for i in range(-1, max_tweaks):
+        if i >= 0 and i != x_coord_least_sig_bits:
+            # Munge x-coordinate candidate by replacing the last 3 least-significant bits with the bits of i.
+            mask: int = _generate_x_coordinate_mask(curve_config)
+            x_coord: int = x_coordinate_candidate & mask | i
+
+        y_squared: int = _check_x_coordinate_is_on_curve(curve_config, x_coord)
+        if y_squared is not None:
+            y_coord: int = mod_sqrt(y_squared, curve_config.modulus)
+            generator = ECC.EccPoint(x_coord, y_coord, curve_config.curve)
+
+            if not generator.is_point_at_infinity():
+                return generator
+            else:
+                continue
+    else:
+        return None
+
+
+def _generate_x_coordinate_mask(curve_config: WeierstrassEllipticCurveConfig) -> int:
+    # Generate a mask for keeping all but the last 3 bits (i in [0, 7]) of an x-coordinate candidate.
+    mask_str: str = "0x" + (curve_config.curve_size_bytes * 2 - 1) * "f" + "8"
+
+    return int(mask_str, 16)
+
+
+def _check_x_coordinate_is_on_curve(curve_config: WeierstrassEllipticCurveConfig, x_coordinate: int) -> int | None:
+    """
+    Check if the x-coordinate candidate is a valid point on the elliptic curve.
+    :return: True if the given x-coordinate candidate corresponds at least one valid point on the elliptic curve, False
+             otherwise.
+    """
+    x_cubed: int = pow(x_coordinate, 3, curve_config.modulus)
+    y_squared_candidate: int = (
+        x_cubed + curve_config.coeff_a * x_coordinate + curve_config.coeff_b
+    ) % curve_config.modulus
+
+    # Check if the y² candidate n is a quadratic residue modulo the elliptic curve's prime modulus
+    # (i.e., whether there exists a y in Z_p such that `y² = n mod p`).
+    if is_quadratic_residue(y_squared_candidate, curve_config.modulus):
+        return y_squared_candidate
+    else:
+        return None
 
 
 def ecc_point_to_hex(ecc_point: ECC.EccPoint) -> str:
