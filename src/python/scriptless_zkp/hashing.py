@@ -48,6 +48,8 @@ class PrimeLengthTruncatedHasher:
         :param prime_for_length: prime for determining the bit-length to be used for the truncated hashes produced,
                which must be less or equal in bit-length to the chosen hash algorithm's digest length in bits.
         :param hash_algorithm: cryptographic hash algorithm to be used for the truncated hashes produced.
+        :param domain_separation_tag: domain separation tag to be used for ensuring distinct hashes from other uses of
+               the configured cryptographic hash algorithm.
         :raises ValueError: if the provided hash algorithm is not supported by hashlib; or the provided prime has a
                 bit-length larger than the chosen hash algorithm's digest size in bits.
         """

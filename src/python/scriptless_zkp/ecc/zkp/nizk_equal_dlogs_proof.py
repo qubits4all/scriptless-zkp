@@ -70,6 +70,14 @@ class NIZKEqualDiscreteLogsContext:
             curve_config: WeierstrassEllipticCurveConfig,
             domain_separation_tag: str = DEFAULT_DOMAIN_SEPARATION_TAG
     ):
+        """
+        Initializes an NIZK Proof of Knowledge (PoK) of Equal Discrete Logs Context, which encapsulates common
+        configuration parameters to be used for proof construction & verification, in addition to providing several
+        methods used by both the prover & the proof's verifier.
+        :param curve_config: elliptic curve configuration to be used.
+        :param domain_separation_tag: domain separation tag to be used for ensuring distinct hashes from other uses of
+               the configured cryptographic hash algorithm.
+        """
         self.curve_config = curve_config
         self.domain_separator = domain_separation_tag
 
@@ -232,7 +240,7 @@ class NIZKEqualDiscreteLogsProof:
 
     def verify(self) -> bool:
         # Reject an invalid ZK proof (i.e., where the proof's public hash or signature is zero).
-        if int(self.proof_pub_hash) == 0 or int(self.proof_signature) == 0:
+        if self.proof_pub_hash == 0 or self.proof_signature == 0:
             return False
 
         # Reconstruct each nonce point from the corresponding EC base & reference points, and the ZK proof's signature
@@ -339,7 +347,7 @@ class NIZKEqualDiscreteLogsProver:
 
                 # Disallow the point-at-infinity as a nonce point.
                 if nonce_point.is_point_at_infinity():
-                    break
+                    break  # Retry nonce generation.
 
                 # Append the valid nonce point to the list of nonce points.
                 nonce_points.append(nonce_point)
@@ -348,7 +356,8 @@ class NIZKEqualDiscreteLogsProver:
             else:
                 # Ensure the number of nonce points matches the number of dlog base/ref. point pairs.
                 if len(nonce_points) != len(discrete_log_params_set.dlog_base_and_ref_points):
-                    continue
+                    continue  # Retry nonce generation.
+
                 # Calculate public hash: `H_q( base_pt1, ref_pt1, base_pt2, ref_pt2, ..., nonce_pt1, nonce_pt2, ... )`,
                 # where H_q(...) is a cryptographic hash that has been truncated to the bit-length of the configured
                 # elliptic curve sub-group's order `q` (i.e., `self.order`).
@@ -358,12 +367,15 @@ class NIZKEqualDiscreteLogsProver:
                     hash_algorithm=self.hash_algo
                 )
                 # Ensure the (truncated) public hash (as an integer) is non-zero, otherwise retry nonce generation.
-                if int(pub_hash) == 0:
-                    continue
+                if pub_hash == 0:
+                    continue  # Retry nonce generation.
 
-                # Calculate the NIZK proof of knowledge (PoK) (as: `sig := (ephemeral_key - pub_hash * dlog) mod q`),
-                # according to the Chaum-Pedersen protocol (adapted for discrete logs over elliptic curves).
-                proof_signature: int = (private_nonce - int(pub_hash) * discrete_log) % self.order
+                # Calculate the NIZK proof of knowledge (PoK) as: `sig := (ephemeral_key - pub_hash * dlog) mod q`,
+                # according to the Chaum-Pedersen protocol (i.e., adapted for discrete logs over elliptic curves &
+                # generalized to N equal discrete logs).
+                proof_signature = NIZKEqualDiscreteLogsProofSignature(
+                    (private_nonce - int(pub_hash) * discrete_log) % self.order
+                )
 
                 # Ensure the proof signature is non-zero, otherwise retry nonce generation.
                 if proof_signature != 0:
@@ -371,6 +383,7 @@ class NIZKEqualDiscreteLogsProver:
                     return NIZKEqualDiscreteLogsProof(
                         discrete_log_params_set,
                         pub_hash,
-                        NIZKEqualDiscreteLogsProofSignature(proof_signature),
+                        proof_signature,
                         hash_algorithm=self.hash_algo
                     )
+                # else: Retry nonce generation.
