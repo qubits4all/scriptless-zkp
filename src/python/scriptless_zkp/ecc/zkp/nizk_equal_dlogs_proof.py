@@ -150,7 +150,10 @@ class NIZKEqualDiscreteLogsContext:
             return public_key.export_key(format='SEC1')
 
     def ecc_point_to_pubkey(self, ecc_point: ECC.EccPoint) -> ECC.EccKey:
-        return ECC.construct(curve=self.curve_config.curve, point_x=ecc_point.x, point_y=ecc_point.y)
+        if self.curve_config.is_point_on_curve(ecc_point):
+            return ECC.construct(curve=self.curve_config.curve, point_x=ecc_point.x, point_y=ecc_point.y)
+        else:
+            raise ValueError(f"Provided ECC point is not on the configured elliptic curve: '{self.curve_config.curve}'")
 
     def encode_ecc_point(self, ecc_point: ECC.EccPoint, point_compression: bool = False) -> bytes:
         """
