@@ -86,12 +86,32 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
 
     def __init__(
             self,
-            target_field_prime: int,
+            target_field_order: int,
             larger_prime_p: int,
             hash_algorithm: str = DEFAULT_HASH_ALGO,
             domain_separation_tag: Optional[str] = None
     ):
-        self.q = target_field_prime
+        """
+        Constructs a universal hash function for producing cryptographic hashes that map onto a prime-order field for a
+        specified prime `q`, ensuring the hash output is within the range `[0, q-1]`.
+        :param target_field_order: the order of the prime-order field `F_q` (i.e., the prime integer `q`) onto which the
+               constructed universal hash function will map the configured cryptographic hash's output.
+        :param larger_prime_p: a prime integer that must be greater than the maximum integer value that can be produced
+               by the configured cryptographic hash algorithm (i.e., when considered as an unsigned integer), used in
+               the Carter-Wegman universal hash construction (e.g., `p > 2^256 - 1` for SHA-256 or SHA3-256).
+        :param hash_algorithm: cryptographic hash algorithm to be used for producing the message input to a
+               Carter-Wegman universal hash function.
+        :param domain_separation_tag: optional domain separation tag to be used for ensuring distinct hashes from other
+               uses of the configured cryptographic hash algorithm.
+        :raises ValueError: if the provided cryptographic hash algorithm is not supported by the `hashlib` library; or
+                if a domain separation tag is provided that's equal to the empty string (or only whitespace).
+        """
+        if hash_algorithm not in hashlib.algorithms_available:
+            raise ValueError(f"Unsupported cryptographic hash algorithm: {hash_algorithm}")
+        elif domain_separation_tag is not None and domain_separation_tag.strip() == "":
+            raise ValueError("Domain separation tag (if provided) must not be an empty-string or only whitespace.")
+
+        self.q = target_field_order
         self.p = larger_prime_p
         self.hash_algo = hash_algorithm
         self.domain_separator = domain_separation_tag
@@ -219,9 +239,15 @@ class PrimeBasedTruncatedHasher(ReducedRangeHasher):
         :param hash_algorithm: cryptographic hash algorithm to be used for the truncated hashes produced.
         :param domain_separation_tag: domain separation tag to be used for ensuring distinct hashes from other uses of
                the configured cryptographic hash algorithm.
-        :raises ValueError: if the provided hash algorithm is not supported by hashlib; or the provided prime has a
-                bit-length larger than the chosen hash algorithm's digest size in bits.
+        :raises ValueError: if the provided cryptographic hash algorithm is not supported by the `hashlib` library; or
+                if the provided prime has a bit-length larger than the chosen hash algorithm's digest size in bits; or
+                if a domain separation tag is provided that's equal to the empty string (or only whitespace).
         """
+        if hash_algorithm not in hashlib.algorithms_available:
+            raise ValueError(f"Unsupported cryptographic hash algorithm: {hash_algorithm}")
+        elif domain_separation_tag is not None and domain_separation_tag.strip() == "":
+            raise ValueError("Domain separation tag (if provided) must not be an empty-string or only whitespace.")
+
         self.hash_algo: str = hash_algorithm
         self.domain_separator = domain_separation_tag
 
