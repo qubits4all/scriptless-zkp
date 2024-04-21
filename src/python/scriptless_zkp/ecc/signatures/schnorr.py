@@ -21,7 +21,7 @@ from scriptless_zkp.ecc import (
 )
 from scriptless_zkp.ecc.exceptions import InvalidECCPublicKeyException, IncorrectECCSchnorrSignatureCurveException
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
-from scriptless_zkp.hashing import PrimeLengthTruncatedHasher
+from scriptless_zkp.hashing import PrimeBasedTruncatedHasher
 
 
 class SchnorrContext:
@@ -205,7 +205,7 @@ class SchnorrKeyPair:
         random_nonce: int = int(random_nonce_pair.d)                 # random nonce: `r`
         random_nonce_point: ECC.EccPoint = random_nonce_pair.pointQ  # nonce point: `R := r*G`
 
-        hasher = PrimeLengthTruncatedHasher(self.context.q, self.context.message_hash_algo)
+        hasher = PrimeBasedTruncatedHasher(self.context.q, self.context.message_hash_algo)
         hash_e: int = hasher.update(                           # hash: `e := H(Q || R || m)`
             self.context.encode_public_key(self.ecc_key_pair)  # public key point `Q := x*G` encoded ('SEC1')
         ).update(
@@ -286,7 +286,7 @@ class SchnorrPublicKey:
 
         # Calculate the truncated hash "e := H(Q || R || m)" of the public key, the signature's public nonce point &
         # the message associated with the Schnorr signature (truncated to the ECC curve's bit-length).
-        truncated_hasher = PrimeLengthTruncatedHasher(
+        truncated_hasher = PrimeBasedTruncatedHasher(
             self.context.ecc_curve_config.order,
             self.context.message_hash_algo
         )

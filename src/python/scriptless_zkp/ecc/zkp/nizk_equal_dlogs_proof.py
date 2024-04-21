@@ -35,7 +35,7 @@ from scriptless_zkp import STRING_ENCODING_FIELD_DELIMITER
 from scriptless_zkp.ecc.ecc_utils import generate_random_nonce
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 
-from scriptless_zkp.hashing import PrimeLengthTruncatedHasher
+from scriptless_zkp.hashing import PrimeBasedTruncatedHasher
 
 
 NIZKEqualDiscreteLogsProofSignature = NewType('NIZKEqualDiscreteLogsProofSignature', int)
@@ -110,7 +110,7 @@ class NIZKEqualDiscreteLogsContext:
 
         # Init. a truncated hasher for hashing to bit-length of elliptic curve sub-group's order (i.e., `|<G>|`), and
         # use a domain separation tag to ensure distinct hashes from other uses of SHA3-256.
-        hasher = PrimeLengthTruncatedHasher(
+        hasher = PrimeBasedTruncatedHasher(
             self.order,
             hash_algorithm=hash_algorithm,
             domain_separation_tag=self.domain_separator

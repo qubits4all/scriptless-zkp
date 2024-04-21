@@ -34,7 +34,7 @@ from scriptless_zkp.ecc.zkp.nizk_dlog_proof import (
 from scriptless_zkp.ecc.zkp.nizk_dlog_proof_commitments import (
     DiscreteLogProofCommitmentUtils, SealedDiscreteLogProofCommitment, RevealedDiscreteLogProofCommitment
 )
-from scriptless_zkp.hashing import PrimeLengthTruncatedHasher
+from scriptless_zkp.hashing import PrimeBasedTruncatedHasher
 
 
 class TwoPartySchnorrContext:
@@ -263,7 +263,7 @@ class TwoPartySchnorrSigner:
         self._verify_public_nonce_share(responder_public_nonce)
 
         # Construct a bit-length LSB(s)-truncated hasher w/ same bit-length as the ECC curve group's (<G>) order (q).
-        truncated_hasher = PrimeLengthTruncatedHasher(
+        truncated_hasher = PrimeBasedTruncatedHasher(
             self.context.ecc_curve_config.order,
             self.context.message_hash_algo
         )
@@ -375,7 +375,7 @@ class TwoPartySchnorrSigner:
         self._verify_public_nonce_share(initiator_public_nonce)
 
         # Construct a bit-length LSB(s)-truncated hasher w/ same bit-length as the ECC curve group's (<G>) order (q).
-        truncated_hasher = PrimeLengthTruncatedHasher(
+        truncated_hasher = PrimeBasedTruncatedHasher(
             self.context.ecc_curve_config.order,
             self.context.message_hash_algo
         )
@@ -652,7 +652,7 @@ class TwoPartySchnorrKeyShare:
                 )
 
         # Construct a bit-length LSB(s)-truncated hasher w/ same bit-length as the ECC curve group's (<G>) order (q).
-        truncated_hasher = PrimeLengthTruncatedHasher(context.ecc_curve_config.order, context.key_hash_algo)
+        truncated_hasher = PrimeBasedTruncatedHasher(context.ecc_curve_config.order, context.key_hash_algo)
 
         # Calculate outer hash of unhardened public keys: "h := H'(H(P1 || P2) || P1)" or "h := H'(H(P1 || P2) || P2)",
         # depending on whether Party #1 (initiator) or Party #2 (responder).
@@ -705,7 +705,7 @@ class TwoPartySchnorrKeyShare:
             counterparty_public_unhardened_key_share: ECC.EccKey
     ) -> ECC.EccKey:
         # Construct a bit-length LSB(s)-truncated hasher w/ same bit-length as the ECC curve group's (<G>) order (q).
-        truncated_hasher = PrimeLengthTruncatedHasher(context.ecc_curve_config.order, context.key_hash_algo)
+        truncated_hasher = PrimeBasedTruncatedHasher(context.ecc_curve_config.order, context.key_hash_algo)
 
         # Calculate outer hash of unhardened public keys: "h := H'(H(P1 || P2) || P1)" or "h := H'(H(P1 || P2) || P2)",
         # depending on whether Party #1 (initiator) or Party #2 (responder).
@@ -868,7 +868,7 @@ class JointSchnorrPublicKey:
 
         # Calculate the truncated hash "e := H'(Q || R || m)" of the joint public key, the signature's public nonce
         # point & the message associated with the two-party Schnorr signature (truncated to the ECC curve's bit-length).
-        truncated_hasher = PrimeLengthTruncatedHasher(self.context.ecc_curve_config.order, self.context.message_hash_algo)
+        truncated_hasher = PrimeBasedTruncatedHasher(self.context.ecc_curve_config.order, self.context.message_hash_algo)
         pubkey_nonce_message_hash: int = truncated_hasher.hash_to_int(
             joint_pubkey_bytes + signature_nonce_point_bytes + message  # concatenate bytes ("Q || R || m")
         )
