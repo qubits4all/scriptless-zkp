@@ -104,16 +104,18 @@ class TwoPartySchnorrContext:
 
     def ecc_point_to_pubkey(self, ecc_point: ECC.EccPoint) -> ECC.EccKey:
         """Converts an ECC point to an ECC public-key ``EccKey`` object."""
-        return ECC.construct(curve=self.ecc_curve_config.curve, point_x=ecc_point.x, point_y=ecc_point.y)
+        if self.verify_ecc_point(ecc_point):
+            return ECC.construct(curve=self.ecc_curve_config.curve, point_x=ecc_point.x, point_y=ecc_point.y)
+        else:
+            raise ValueError(
+                f"Provided ECC point is not on the configured elliptic curve: '{self.ecc_curve_config.curve}'"
+            )
 
     def verify_ecc_point(self, ecc_point: ECC.EccPoint) -> bool:
-        """Returns whether the provided ECC point is on the configured elliptic curve."""
-        try:
-            self.ecc_point_to_pubkey(ecc_point)
-        except ValueError:
-            return False
-        else:
-            return True
+        """
+        Returns whether the provided ECC point is on the configured elliptic curve, inclusive of the point-at-infinity.
+        """
+        return self.ecc_curve_config.is_point_on_curve(ecc_point)
 
 
 class TwoPartySchnorrSigner:

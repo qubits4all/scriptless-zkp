@@ -56,7 +56,12 @@ class SchnorrContext:
         return self.ecc_point_to_pubkey(ecc_point).export_key(format='SEC1')
 
     def ecc_point_to_pubkey(self, ecc_point: ECC.EccPoint) -> ECC.EccKey:
-        return ECC.construct(curve=self.ecc_curve_config.curve, point_x=ecc_point.x, point_y=ecc_point.y)
+        if self.ecc_curve_config.is_point_on_curve(ecc_point):
+            return ECC.construct(curve=self.ecc_curve_config.curve, point_x=ecc_point.x, point_y=ecc_point.y)
+        else:
+            raise ValueError(
+                f"Provided ECC point is not on the configured elliptic curve: '{self.ecc_curve_config.curve}'"
+            )
 
     def generate_key_pair(self) -> ECC.EccKey:
         return ECC.generate(curve=self.ecc_curve_config.curve)
