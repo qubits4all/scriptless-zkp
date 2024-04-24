@@ -1,2 +1,3 @@
 attrs~=23.1.0
 pycryptodomex~=3.19.0
+libnum~=1.7.1

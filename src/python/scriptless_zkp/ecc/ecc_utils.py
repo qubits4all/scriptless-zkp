@@ -61,7 +61,7 @@ def generate_random_nonce_pair(
     return private_nonce, nonce_point
 
 
-def generate_random_generator(
+def derive_random_generator(
         curve_config: WeierstrassEllipticCurveConfig,
         nonce: int | None = None,
         hash_algorithm: str = UniversalPrimeLengthHasher.DEFAULT_HASH_ALGO,
@@ -171,10 +171,10 @@ def _hunt_and_peck_for_generator(
 
 
 def _generate_x_coordinate_mask(curve_config: WeierstrassEllipticCurveConfig) -> int:
-    # Generate a mask for keeping all but the last 3 bits (i in [0, 7]) of an x-coordinate candidate.
-    mask_str: str = "0x" + (curve_config.curve_size_bytes * 2 - 1) * "f" + "8"
-
-    return int(mask_str, 16)
+    """
+    Generate a mask for keeping all but the last 3 bits (i in [0, 7]) of an x-coordinate candidate.
+    """
+    return ((1 << curve_config.size_bits) - 1) ^ 0x7
 
 
 def _check_x_coordinate_is_on_curve(curve_config: WeierstrassEllipticCurveConfig, x_coordinate: int) -> int | None:
@@ -189,7 +189,8 @@ def _check_x_coordinate_is_on_curve(curve_config: WeierstrassEllipticCurveConfig
     ) % curve_config.modulus
 
     # Check if the y² candidate n is a quadratic residue modulo the elliptic curve's prime modulus
-    # (i.e., whether there exists a y in Z_p such that `y² = n mod p`).
+    # (i.e., whether there exists a y in Z_p such that `y² = n mod p`), since not all integers have a square root modulo
+    # a prime modulus.
     if is_quadratic_residue(y_squared_candidate, curve_config.modulus):
         return y_squared_candidate
     else:

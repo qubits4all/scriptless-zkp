@@ -16,6 +16,8 @@
 This module provides number-theoretic functions that are used by various modules.
 """
 
+from libnum import sqrtmod_prime_power
+
 
 def legendre_symbol(a: int, prime_modulus: int) -> int:
     """
@@ -60,9 +62,21 @@ def mod_sqrt(a: int, prime_modulus: int) -> int:
         raise ValueError(f"The integer {a} is not a quadratic residue modulo the prime modulus {prime_modulus}")
 
     if prime_modulus % 4 == 3:
+        # DEBUG
+        print(
+            f"DEBUG: Computing modular square root of a: {a} modulo prime modulus p: {prime_modulus} (p == 3 mod 4),"
+            f" using identity: sqrt(a) mod p = a^((p + 1) / 4) mod p"
+        )
+
+        # Compute modular square root using the identity: `sqrt(a) mod p = a^((p + 1) / 4) mod p` (where p == 3 mod 4).
         return pow(a, (prime_modulus + 1) // 4, prime_modulus)
-    else:
-        # TODO: Implement the Tonelli-Shanks algorithm for prime modulus p where p = 1 (mod 4).
-        raise NotImplementedError(
-            "Modular square root computation is not yet supported for prime modulus p where p = 1 (mod 4)."
+    else:  # prime_modulus % 4 == 1  (Note: Must use the Tonelli-Shanks algorithm for prime modulus p == 1 mod 4.)
+        # DEBUG
+        print(
+            f"DEBUG: Computing modular square root of {a} modulo prime modulus {prime_modulus} (p == 1 mod 4), using"
+            f" libnum's sqrtmod_prime_power(...)."
+        )
+
+        return next(
+            sqrtmod_prime_power(a, prime_modulus, 1)
         )
