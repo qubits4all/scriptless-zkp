@@ -50,7 +50,9 @@ class WeierstrassEllipticCurveConfig:
         :return: A dictionary of supported elliptic curve aliases keyed by a curve's primary name.
         """
         return {
-            'P-256': ["P-256", "secp256r1", "prime256v1", "nistp256"]
+            'P-256': ["P-256", "NIST P-256", "secp256r1", "prime256v1", "nistp256", "p256"],
+            'P-384': ["P-384", "NIST P-384", "secp384r1", "prime384v1", "nistp384", "p384"],
+            'P-521': ["P-521", "NIST P-521", "secp521r1", "prime521v1", "nistp521", "p521"]
         }
 
     @classmethod
@@ -141,6 +143,54 @@ class WeierstrassEllipticCurveConfig:
         (also known as SECP-256r1), named after a common short alias.
         """
         return cls.secp256r1()
+
+    @classmethod
+    def secp384r1(cls) -> WeierstrassEllipticCurveConfig:
+        """
+        Factory function for constructing a configuration context for the standard NIST P-384 elliptic curve (also
+        known as SECP-384r1).
+        """
+        return WeierstrassEllipticCurveConfig(
+            curve="P-384",
+            order=0xffffffffffffffffffffffffffffffffffffffffffffffffc7634d81f4372ddf581a0db248b0a77aecec196accc52973,
+            modulus=0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffff0000000000000000ffffffff,
+            coeff_a=0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffff0000000000000000fffffffc,
+            coeff_b=0xb3312fa7e23ee7e4988e056be3f82d19181d9c6efe8141120314088f5013875ac656398d8a2ed19d2a85c8edd3ec2aef,
+            size_bits=384,
+            curve_aliases=["p384", "NIST P-384", "P-384", "prime384v1", "secp384r1", "nistp384"]
+        )
+
+    @classmethod
+    def p384(cls) -> WeierstrassEllipticCurveConfig:
+        """
+        Convenience factory function for constructing a configuration context for the standard NIST P-384 elliptic curve
+        (also known as SECP-384r1), named after a common short alias.
+        """
+        return cls.secp384r1()
+
+    @classmethod
+    def secp521r1(cls) -> WeierstrassEllipticCurveConfig:
+        """
+        Factory function for constructing a configuration context for the standard NIST P-521 elliptic curve (also
+        known as SECP-521r1).
+        """
+        return WeierstrassEllipticCurveConfig(
+            curve="P-521",
+            order=0x000001fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffa51868783bf2f966b7fcc0148f709a5d03bb5c9b8899c47aebb6fb71e91386409,
+            modulus=0x000001ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff,
+            coeff_a=0x1ff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_fffffffc,
+            coeff_b=0x051_953eb961_8e1c9a1f_929a21a0_b68540ee_a2da725b_99b315f3_b8b48991_8ef109e1_56193951_ec7e937b_1652c0bd_3bb1bf07_3573df88_3d2c34f1_ef451fd4_6b503f00,
+            size_bits=521,
+            curve_aliases=["p521", "NIST P-521", "P-521", "prime521v1", "secp521r1", "nistp521"]
+        )
+
+    @classmethod
+    def p521(cls) -> WeierstrassEllipticCurveConfig:
+        """
+        Convenience factory function for constructing a configuration context for the standard NIST P-521 elliptic curve
+        (also known as SECP-521r1), named after a common short alias.
+        """
+        return cls.secp521r1()
 
     @classmethod
     def is_curve_supported(cls, curve_name: str) -> bool:
