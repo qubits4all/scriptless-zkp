@@ -24,6 +24,7 @@ non-interactive ZK proof construction, featuring both non-interactive proof gene
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 
 from typing import NewType, Tuple
@@ -169,6 +170,8 @@ class NIZKEqualDiscreteLogsContext:
 class NIZKDiscreteLogParameterSet:
     # Minimum number of discrete log base/ref. point pairs.
     MIN_DISCRETE_LOGS: int = 1  # Note: This protocol generalizes to the single discrete case.
+    # Minimum number of fields in a proof's encoded parameter-set.
+    MIN_FIELDS_COUNT: int = 4
 
     curve_config: WeierstrassEllipticCurveConfig
     dlog_base_and_ref_points: list[ECCDiscreteLogBaseAndProduct]
@@ -187,12 +190,90 @@ class NIZKDiscreteLogParameterSet:
         self.hash_algo = hash_algorithm
         self.dlog_base_and_ref_points = dlog_base_and_ref_points
 
+    @classmethod
+    def from_string_encoding(cls, encoded_parameter_set: str) -> NIZKDiscreteLogParameterSet:
+        """
+        Decodes a set of elliptic curve discrete log product/base point pairs (a component of an NIZK equal discrete
+        logs proof) from a colon-delimited string of `key=value` formatted properties & base64-encoded binary values,
+        as follows:
+            `curve=<ECC-curve-name>:dlogs-count=<dlogs-count>:<dlog-base-1>:<ref-pt-1>[:<dlog-base-i>:<ref-pt-i>]...`
+        :param encoded_parameter_set: a string encoding of a set of elliptic curve discrete log product/base point
+               pairs, which uses base64-encoding for binary values.
+        :return: a set of elliptic curve discrete log product/base point pairs, if this encoded parameter-set is valid.
+        :raises ValueError: if the provided encoded set of discrete log product/base point pairs is improperly encoded
+                or incomplete.
+        """
+        parsed_fields: list[str] = encoded_parameter_set.split(STRING_ENCODING_FIELD_DELIMITER)
+        if len(parsed_fields) < cls.MIN_FIELDS_COUNT:
+            raise ValueError(
+                f"Invalid parameter-set of discrete log product/base point pairs for NIZK equal discrete logs proof"
+                f" -- expected at least 3 fields, but found [{len(parsed_fields)}]."
+            )
+
+        # Extract the curve name from the encoded proof.
+        curve_name_field: str = parsed_fields[0]
+        _, curve_name = curve_name_field.split('=')
+
+        curve_config: WeierstrassEllipticCurveConfig | None = WeierstrassEllipticCurveConfig.for_curve_name(curve_name)
+        if curve_config is None:
+            raise ValueError(
+                f"Invalid NIZK equal discrete logs proof encoding -- unsupported elliptic curve with name:"
+                f" '{curve_name}' specified for parameter-set of discrete log product/base point pairs."
+            )
+
+        # Extract the number of discrete logs being proven equal.
+        _, dlogs_count_str = parsed_fields[1].split('=')
+        dlogs_count = int(dlogs_count_str)
+
+        # Validate we have the expected number of discrete log product/base point pairs.
+        if dlogs_count < NIZKDiscreteLogParameterSet.MIN_DISCRETE_LOGS:
+            raise ValueError(
+                f"Invalid NIZK equal discrete logs proof parameter-set encoding -- expected at least"
+                f" {NIZKDiscreteLogParameterSet.MIN_DISCRETE_LOGS} discrete log product/base point pairs, but found"
+                f" [{dlogs_count}]."
+            )
+        elif len(parsed_fields) - 2 < dlogs_count or (len(parsed_fields) - 2) % 2 != 0:
+            raise ValueError(
+                f"Invalid NIZK equal discrete logs proof parameter-set encoding -- expected [{dlogs_count}] discrete"
+                f" log product/base point pairs, but found [{(len(parsed_fields) - 2) // 2}]."
+            )
+
+        # Extract the encoded discrete log parameters.
+        dlog_base_and_ref_points: list[ECCDiscreteLogBaseAndProduct] = []
+        for i in range(2, len(parsed_fields), 2):
+            dlog_base_field: str = parsed_fields[i]
+            ref_pt_field: str = parsed_fields[i + 1]
+
+            try:
+                dlog_base_bytes: bytes = base64.b64decode(dlog_base_field)
+                ref_pt_bytes: bytes = base64.b64decode(ref_pt_field)
+
+                dlog_base = ECC.import_key(dlog_base_bytes, curve_name=curve_name)
+                ref_pt = ECC.import_key(ref_pt_bytes, curve_name=curve_name)
+            except (ValueError, TypeError, binascii.Error) as ex:
+                raise ValueError(
+                    f"Invalid NIZK equal discrete logs proof encoding -- failed to decode the set of discrete log"
+                    f" product/base point pairs, due to exception: {ex}"
+                ) from ex
+            else:
+                dlog_base_and_ref_points.append(ECCDiscreteLogBaseAndProduct((dlog_base, ref_pt)))
+
+        # TODO: Parse the hash algorithm used for the proof, since this should be specified in the parameter-set's
+        #   constructor. (Note: This field is already present in the NIZK proof's encoding.)
+        return NIZKDiscreteLogParameterSet(
+            curve_config,
+            dlog_base_and_ref_points
+        )
+
     def encode_as_string(self) -> str:
+        # noinspection PyCompatibility
         """
         Encodes this discrete logarithms parameter-set, including the configured elliptic curve's "primary" name, and
-        the number of discrete log parameter (dlog base/reference point) pairs, as a colon-delimited string of key=value
-        formatted properties & base64-encoded binary values, as follows:
+        the number of discrete log parameter (dlog base/reference point) pairs, as a colon-delimited string of
+        `key=value` formatted properties & base64-encoded binary values, as follows:
             `curve=<ECC-curve-name>:dlogs-count=<dlogs-count>:<dlog-base-1>:<ref-pt-1>[:<dlog-base-i>:<ref-pt-i>]...`
+        :return: a string encoding of this discrete logarithms parameter-set, which uses base64-encoding for binary
+                 values.
         """
         context = NIZKEqualDiscreteLogsContext(self.curve_config, self.hash_algo)
         encoded_params: list[str] = []
@@ -224,6 +305,9 @@ class NIZKEqualDiscreteLogsProof:
     proof_signature: NIZKEqualDiscreteLogsProofSignature
     hash_algo: str
 
+    # Minimum number of fields in a proof's encoded parameter-set.
+    MIN_FIELDS_COUNT: int = NIZKDiscreteLogParameterSet.MIN_FIELDS_COUNT + 3
+
     def __init__(
             self,
             discrete_log_params_set: NIZKDiscreteLogParameterSet,
@@ -237,6 +321,70 @@ class NIZKEqualDiscreteLogsProof:
         self.discrete_log_params_set = discrete_log_params_set
         self.proof_pub_hash = proof_public_hash
         self.proof_signature = proof_signature
+
+    @classmethod
+    def from_string_encoding(cls, encoded_proof: str) -> NIZKEqualDiscreteLogsProof:
+        # noinspection PyCompatibility
+        """
+        Decodes an NIZK proof of knowledge (PoK) of equal discrete logarithms from a colon-delimited string of key=value
+        formatted properties & base64-encoded binary values, as follows:
+            `hash-algo=<hash-algorithm>:<encoded_dlog_params>:<proof_pub_hash>:<proof_signature>`
+        :param encoded_proof: a string encoding of an NIZK proof of knowledge (PoK) of equal discrete logarithms, which
+               uses base64-encoding for binary values.
+        :return: an NIZK proof of knowledge (PoK) of equal discrete logarithms, if the encoded proof is valid; otherwise,
+                `None`.
+        :raises ValueError: if provided encoded NIZK proof is improperly encoded or incomplete.
+        """
+        proof_fields: list[str] = encoded_proof.split(STRING_ENCODING_FIELD_DELIMITER)
+        if len(proof_fields) < cls.MIN_FIELDS_COUNT:
+            raise ValueError(
+                f"Invalid NIZK equal discrete logs proof encoding -- expected at least [{cls.MIN_FIELDS_COUNT}] fields,"
+                f" but found [{len(proof_fields)}]."
+            )
+
+        # Extract the hash algorithm used for the proof.
+        hash_algo_field: str = proof_fields[0]
+        _, hash_algo = hash_algo_field.split('=')
+
+        # Extract the encoded discrete log parameters.
+        encoded_dlog_params: str = proof_fields[1]
+        try:
+            dlog_params_set = NIZKDiscreteLogParameterSet.from_string_encoding(encoded_dlog_params)
+        except ValueError as ve:
+            raise ValueError(
+                f"Invalid NIZK equal discrete logs proof encoding -- the set of discrete log product/base point pairs"
+                f" failed decoding, due to exception: {ve}"
+            ) from ve
+        else:
+            # Set the parameter-set's hash algorithm to the one specified in the proof's encoding.
+            dlog_params_set.hash_algo = hash_algo
+
+        # Extract the proof's public hash and signature.
+        proof_pub_hash_base64: str = proof_fields[-2]
+        proof_signature_base64: str = proof_fields[-1]
+
+        try:
+            proof_pub_hash_bytes: bytes = base64.b64decode(proof_pub_hash_base64)
+            proof_signature_bytes: bytes = base64.b64decode(proof_signature_base64)
+
+            proof_pub_hash: NIZKEqualDiscreteLogsProofHash = NIZKEqualDiscreteLogsProofHash(
+                number.bytes_to_long(proof_pub_hash_bytes)
+            )
+            proof_signature: NIZKEqualDiscreteLogsProofSignature = NIZKEqualDiscreteLogsProofSignature(
+                number.bytes_to_long(proof_signature_bytes)
+            )
+        except (ValueError, TypeError, binascii.Error) as ex:
+            raise ValueError(
+                f"Invalid NIZK equal discrete logs proof encoding -- failed to decode the proof's public hash or"
+                f" proof signature components from base64-encoded values, due to exception: {ex}"
+            ) from ex
+        else:
+            return NIZKEqualDiscreteLogsProof(
+                dlog_params_set,
+                proof_pub_hash,
+                proof_signature,
+                hash_algorithm=hash_algo
+            )
 
     def verify(self) -> bool:
         # Reject an invalid ZK proof (i.e., where the proof's public hash or signature is zero).
