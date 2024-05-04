@@ -2,8 +2,6 @@
 
 from typing import Optional
 
-from scriptless_zkp.ecc.ecc_utils import WeierstrassEllipticCurveConfig
-
 
 class InvalidECCPublicKeyException(Exception):
     def __init__(self, msg: str):
@@ -17,7 +15,7 @@ class InvalidECCPublicKeyException(Exception):
 class InvalidECCPointException(Exception):
     def __init__(
             self,
-            ecc_curve_config: WeierstrassEllipticCurveConfig,
+            ecc_curve_name: str,
             point_x: int,
             point_y: int,
             msg: Optional[str] = None
@@ -26,10 +24,10 @@ class InvalidECCPointException(Exception):
         if msg is not None:
             message = f"{msg} -- {message}"
 
-        message = f"{message} [curve={ecc_curve_config.curve}, point_x={point_x}, point_y={point_y}]"
+        message = f"{message} [curve={ecc_curve_name}, point_x={point_x}, point_y={point_y}]"
 
         super().__init__(message)
-        self.ecc_curve_config = ecc_curve_config
+        self.ecc_curve = ecc_curve_name
         self.point_x = point_x
         self.point_y = point_y
         self.msg = message

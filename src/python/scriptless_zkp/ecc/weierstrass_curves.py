@@ -71,14 +71,18 @@ class WeierstrassEllipticCurveConfig:
 
     def is_point_on_curve(self, point: ECC.EccPoint) -> bool:
         """
-        Returns whether the given elliptic curve point is on this curve, inclusive of the point-at-infinity.
+        Returns whether the given elliptic curve point is on this curve, inclusive of the point-at-infinity, by
+        verifying the point's x and y coordinates satisfy the Weierstrass elliptic curve equation:
+        `y² = x³ + ax + b mod p`, where `p` is the prime modulus of the curve `E(F_p)` over the finite field `F_p` and
+        `a` and `b` are the curve's defined coefficients.
         """
         if not point.is_point_at_infinity():
-            return (point.y ** 2) % self.modulus == (
-                point.x ** 3 + self.coeff_a * point.x + self.coeff_b
-            ) % self.modulus
+            y_squared: int = pow(point.y, 2, self.modulus)
+            x_cubed: int = pow(point.x, 3, self.modulus)
+
+            return y_squared == (x_cubed + self.coeff_a * point.x + self.coeff_b) % self.modulus
         else:
-            return True
+            return True  # the identity element (point-at-infinity) is always on the curve
 
     def has_curve_name(self, curve_name: str):
         """
