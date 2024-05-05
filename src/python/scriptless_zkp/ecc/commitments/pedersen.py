@@ -12,6 +12,7 @@ from Cryptodome.PublicKey import ECC
 from Cryptodome.Util import number
 
 from scriptless_zkp.ecc import ecc_utils
+from scriptless_zkp.ecc.generators import RandomGeneratorDerivationContext
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 
 
@@ -42,13 +43,15 @@ class PedersenCommitmentContext:
         :return: a new Pedersen commitment context for the provided elliptic curve configuration, using a derived NUMS
                  generator point.
         """
-        # Derive an effectively independent (NUMS) generator point for which nobody knows the discrete logarithm.
-        nums_generator: ECC.EccPoint = ecc_utils.derive_random_generator(
+        generator_context: RandomGeneratorDerivationContext = RandomGeneratorDerivationContext(
             curve_config,
-            nonce,
             hash_algorithm=PedersenCommitmentContext.DEFAULT_NUMS_GENERATOR_HASH_ALGO,
             domain_separation_tag=PedersenCommitmentContext.NUMS_GENERATOR_DOMAIN_SEPARATOR
         )
+
+        # Derive an effectively independent (NUMS) generator point for which nobody knows the discrete logarithm.
+        nums_generator: ECC.EccPoint = generator_context.derive_generator_for_nonce(nonce)
+
         return cls(curve_config, nums_generator)
 
     @classmethod
