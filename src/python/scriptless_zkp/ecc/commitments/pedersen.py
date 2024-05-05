@@ -31,26 +31,23 @@ class PedersenCommitmentContext:
     def for_curve(
             cls,
             curve_config: WeierstrassEllipticCurveConfig,
-            nums_generator_nonce: int = DEFAULT_NUMS_GENERATOR_NONCE,
-            nums_generator_hash_algorithm: str = DEFAULT_NUMS_GENERATOR_HASH_ALGO,
-            nums_generator_domain_separator: str = NUMS_GENERATOR_DOMAIN_SEPARATOR
+            nonce: int = DEFAULT_NUMS_GENERATOR_NONCE
     ) -> PedersenCommitmentContext:
         """
         Creates a new Pedersen commitment context for the provided elliptic curve configuration, using a derived NUMS
-        generator point constructed from the provided nonce, hash algorithm, and domain separator.
+        ("Nothing Up My Sleeve") generator point (for which nobody knows the discrete logarithm), constructed from the
+        provided nonce, hash algorithm, and domain separator.
         :param curve_config: the elliptic curve configuration to use for Pedersen commitments.
-        :param nums_generator_nonce: a nonce to use when deriving the NUMS generator.
-        :param nums_generator_hash_algorithm: the hash algorithm to use when deriving the NUMS generator.
-        :param nums_generator_domain_separator: the domain separator to use when deriving the NUMS generator.
+        :param nonce: a nonce to use when deriving the NUMS generator.
         :return: a new Pedersen commitment context for the provided elliptic curve configuration, using a derived NUMS
                  generator point.
         """
         # Derive an effectively independent (NUMS) generator point for which nobody knows the discrete logarithm.
         nums_generator: ECC.EccPoint = ecc_utils.derive_random_generator(
             curve_config,
-            nonce=nums_generator_nonce,
-            hash_algorithm=nums_generator_hash_algorithm,
-            domain_separation_tag=nums_generator_domain_separator
+            nonce,
+            hash_algorithm=PedersenCommitmentContext.DEFAULT_NUMS_GENERATOR_HASH_ALGO,
+            domain_separation_tag=PedersenCommitmentContext.NUMS_GENERATOR_DOMAIN_SEPARATOR
         )
         return cls(curve_config, nums_generator)
 
@@ -62,7 +59,7 @@ class PedersenCommitmentContext:
     ) -> PedersenCommitmentContext:
         """
         Creates a new Pedersen commitment context for the provided elliptic curve configuration, using the provided NUMS
-        generator point.
+        ("Nothing Up My Sleeve") generator point.
         :param curve_config: the elliptic curve configuration to use for Pedersen commitments.
         :param nums_generator: the NUMS generator point to use for Pedersen commitments.
         :return: a new Pedersen commitment context for the provided elliptic curve configuration, using the provided
