@@ -27,6 +27,10 @@ all liability or warrantability related to its use.
   - **Two-Party ECC Schnorr Signatures** [`scriptless_zkp.ecc.signatures.two_party_schnorr`]
     - Features verification via a joint public key & indistinguishability from single-party ECC Schnorr signatures.
 
+#### Elliptic Curve Cryptography (ECC) [[scriptless_zkp.ecc](https://github.com/qubits4all/scriptless-zkp/tree/feature/GI-11-NIZK-PoK-of-equal-discrete-logs/src/python/scriptless_zkp/ecc)]
+  - Support for prime-order elliptic curves (Weierstrass form) [`scriptless_zkp.ecc.weierstrass_curves`]
+    - **NIST P-256** (`secp256r1`), **NIST P-384** (`secp384r1`), **NIST P-521** (`secp521r1`)
+
 #### Cryptographic Commitments [[scriptless_zkp.commitments](https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/commitments)]
   - **HMAC-based & Blake2b-based Keyed-Hash Commitments** [`scriptless_zkp.commitments.hmac_commitments`]
 
@@ -51,10 +55,10 @@ all liability or warrantability related to its use.
 Curves)~~
 - ~~NIZK Proofs of Knowledge (PoKs) of _Equal_ Discrete Logarithms
 (based on the Chaum-Pedersen protocol)~~
-- Support additional prime-order elliptic curves (ECC Schnorr, Two-Party ECC Schnorr and NIZK PoKs of Discrete Log
-modules):
-  - NIST P-384 (`secp384r1`)
-  - NIST P-521 (`secp521r1`)
+- ECC Schnorr, Two-Party ECC Schnorr and NIZK PoKs of Discrete Log modules
+  - Support additional prime-order elliptic curves:
+    - NIST P-384 (`secp384r1`)
+    - NIST P-521 (`secp521r1`)
 
 
 #### Planned Future Work:
