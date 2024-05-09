@@ -132,7 +132,7 @@ def derive_random_generator(
 
         y_squared: int = _check_x_coordinate_is_on_curve(curve_config, x_coord)
         if y_squared is not None:
-            y_coord: int = mod_sqrt(y_squared, curve_config.modulus)
+            y_coord: int = mod_sqrt(y_squared, curve_config.modulus)[0]  # positive square root
             generator = ECC.EccPoint(x_coord, y_coord, curve_config.curve)
 
             if not generator.is_point_at_infinity():
@@ -159,7 +159,7 @@ def _hunt_and_peck_for_generator(
 
         y_squared: int = _check_x_coordinate_is_on_curve(curve_config, x_coord)
         if y_squared is not None:
-            y_coord: int = mod_sqrt(y_squared, curve_config.modulus)
+            y_coord: int = mod_sqrt(y_squared, curve_config.modulus)[0]  # positive square root
             generator = ECC.EccPoint(x_coord, y_coord, curve_config.curve)
 
             if not generator.is_point_at_infinity():
