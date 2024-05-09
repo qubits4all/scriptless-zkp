@@ -30,9 +30,12 @@ all liability or warrantability related to its use.
 #### Elliptic Curve Cryptography (ECC) [[scriptless_zkp.ecc](https://github.com/qubits4all/scriptless-zkp/tree/feature/GI-11-NIZK-PoK-of-equal-discrete-logs/src/python/scriptless_zkp/ecc)]
   - Support for prime-order elliptic curves (Weierstrass form) [`scriptless_zkp.ecc.weierstrass_curves`]
     - **NIST P-256** (`secp256r1`), **NIST P-384** (`secp384r1`), **NIST P-521** (`secp521r1`)
-  - Support derivation of effectively independent ECC generator points [`scriptless_zkp.ecc.ecc_utils`]
+  - Support derivation of effectively-independent ECC generator points [`scriptless_zkp.ecc.ecc_utils`]
     - Generation of elliptic curve generator points for which _nobody_ knows the discrete logarithm w.r.t. the base
     point `G`.
+
+#### Cryptographic Commitments (Elliptic Curve-based) [[scriptless_zkp.ecc.commitments](https://github.com/qubits4all/scriptless-zkp/tree/feature/GI-11-NIZK-PoK-of-equal-discrete-logs/src/python/scriptless_zkp/ecc/commitments)]
+  - **Pedersen Commitments** (over Elliptic Curves) [`scriptless_zkp.ecc.commitments.pedersen`]
 
 #### Cryptographic Commitments [[scriptless_zkp.commitments](https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/commitments)]
   - **HMAC-based & Blake2b-based Keyed-Hash Commitments** [`scriptless_zkp.commitments.hmac_commitments`]
@@ -66,13 +69,14 @@ Curves)~~
 
 #### Planned Future Work:
 
+- ~~Pedersen Commitments** (over Elliptic Curves)~~
+- **Vector Pedersen Commitments** (over Elliptic Curves)
 - **Adaptor Signatures for ECC Schnorr** (single-party)
 - Support for **[BIP-340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki) compatible ECC Schnorr
 Signatures**
   - (using the `secp256k1` elliptic curve used by Bitcoin & Ethereum)
 - Support for **BIP-340 compatible Two-Party ECC Schnorr Signatures**
 - **Two-Party Adaptor Signatures for ECC Schnorr** (BIP-340 compatible)
-- **Pedersen Commitments** & **Vector Pedersen Commitments** (over Elliptic Curves)
 - **Zero-Knowledge Range Proofs** (based on [Bulletproofs](https://eprint.iacr.org/2017/1066.pdf))
 - **Two-Party ECDSA Signatures** (based on [Yehuda Lindell's protocol](https://eprint.iacr.org/2017/552.pdf))
 - **Two-Party Adaptor Signatures for ECDSA**
