@@ -15,7 +15,6 @@
 """
 This module provides number-theoretic functions that are used by various modules.
 """
-
 from libnum import sqrtmod_prime_power
 
 
@@ -27,7 +26,23 @@ def legendre_symbol(a: int, prime_modulus: int) -> int:
     :param prime_modulus: the odd prime modulus `p` for the Legendre symbol computation.
     :return: the Legendre symbol of `a` modulo `p`, for a prime modulus `p`.
     """
-    return pow(a, (prime_modulus - 1) // 2, prime_modulus)
+    if prime_modulus < 3:
+        raise ValueError("The Legendre symbol is only defined for an odd prime modulus.")
+
+    if a == 0 or a % prime_modulus == 0:
+        return 0
+    elif a == 1 or a % prime_modulus == 1:
+        return 1
+    # Applying the law of quadratic reciprocity (1st supplement):
+    elif a == -1 or a % prime_modulus == prime_modulus - 1:
+        if prime_modulus % 4 == 1:
+            return 1
+        else:  # prime_modulus % 4 == 3
+            return -1
+    # TODO: Add special cases for `a` in {2, 3, 5} for p != a, using the law of quadratic reciprocity.
+    else:
+        # Using Euler's criterion: `a^((p - 1) / 2) mod p`
+        return pow(a, (prime_modulus - 1) // 2, prime_modulus)
 
 
 def is_quadratic_residue(a: int, prime_modulus: int) -> bool:
@@ -50,7 +65,25 @@ def is_quadratic_nonresidue(a: int, prime_modulus: int) -> bool:
     return legendre_symbol(a, prime_modulus) == -1
 
 
-def mod_sqrt(a: int, prime_modulus: int) -> int:
+def has_mod_sqrt(a: int, prime_modulus: int) -> bool:
+    """
+    Determines whether the given integer `a` has a square root modulo the given prime `prime_modulus` (i.e., whether
+    there exists an integer `n` such that `n² == a mod p`, where `==` here represents congruence).
+    :param a: an integer for which the existence of a modular square root `n` is to be determined.
+    :param prime_modulus: a prime modulus `p` for which the existence of a modular square root `n` is to be determined.
+    :return: True if `a` has a modular square root modulo `prime_modulus`, False otherwise.
+    """
+    if a in {0, 1}:
+        return True
+    elif prime_modulus == 2:
+        return True
+    elif a % prime_modulus in {0, 1}:
+        return True
+    else:
+        return legendre_symbol(a, prime_modulus) != -1
+
+
+def mod_sqrt(a: int, prime_modulus: int) -> tuple[int, ...]:
     """
     Computes the modular square root of the integer `a` modulo the odd prime `prime_modulus`, using the Tonelli-Shanks
     algorithm. This function returns the positive square root of `a` modulo `prime_modulus`.
@@ -58,25 +91,24 @@ def mod_sqrt(a: int, prime_modulus: int) -> int:
     :param prime_modulus: the odd prime modulus for the modular square root computation.
     :return: the positive square root of `a` modulo `prime_modulus`.
     """
-    if not is_quadratic_residue(a, prime_modulus):
-        raise ValueError(f"The integer {a} is not a quadratic residue modulo the prime modulus {prime_modulus}")
-
-    if prime_modulus % 4 == 3:
-        # DEBUG
-        print(
-            f"DEBUG: Computing modular square root of a: {a} modulo prime modulus p: {prime_modulus} (p == 3 mod 4),"
-            f" using identity: sqrt(a) mod p = a^((p + 1) / 4) mod p"
+    if is_quadratic_nonresidue(a, prime_modulus):
+        raise ValueError(
+            f"The integer {a} has no square root modulo {prime_modulus}, as it is a quadratic non-residue."
         )
 
-        # Compute modular square root using the identity: `sqrt(a) mod p = a^((p + 1) / 4) mod p` (where p == 3 mod 4).
-        return pow(a, (prime_modulus + 1) // 4, prime_modulus)
-    else:  # prime_modulus % 4 == 1  (Note: Must use the Tonelli-Shanks algorithm for prime modulus p == 1 mod 4.)
-        # DEBUG
-        print(
-            f"DEBUG: Computing modular square root of {a} modulo prime modulus {prime_modulus} (p == 1 mod 4), using"
-            f" libnum's sqrtmod_prime_power(...)."
-        )
+    if a == 0 or a % prime_modulus == 0:
+        return (0,)
+    elif prime_modulus == 2:
+        return (1,)
+    elif a == 1 or a % prime_modulus == 1:
+        return 1, prime_modulus - 1
+    elif prime_modulus % 4 == 3:
+        # Compute modular square root using the identity:
+        #     `sqrt(a) mod p = +/- a^((p + 1) / 4) mod p`, where p == 3 mod 4 (for `==` here representing congruence).
+        positive_root: int = pow(a, (prime_modulus + 1) // 4, prime_modulus)
 
-        return next(
-            sqrtmod_prime_power(a, prime_modulus, 1)
+        return positive_root, prime_modulus - positive_root
+    else:  # prime_modulus % 4 == 1
+        return tuple(
+            sqrtmod_prime_power(a, prime_modulus, 1)  # note: this libnum function returns a Generator
         )
