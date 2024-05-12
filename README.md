@@ -53,30 +53,46 @@ all liability or warrantability related to its use.
     multi-party protocols involving ZK proofs (e.g., for ensuring correct protocol execution by each party).
 
 
-### Planned Future Work & Coming Soon
-
-#### Coming Soon:
+### Coming Soon
 
 - ~~Non-Interactive Zero-Knowledge (NIZK) Proofs of Knowledge (PoKs) of Discrete Logarithms (over Elliptic
 Curves)~~
 - ~~NIZK Proofs of Knowledge (PoKs) of _Equal_ Discrete Logarithms
 (based on the Chaum-Pedersen protocol)~~
-- ECC Schnorr, Two-Party ECC Schnorr and NIZK PoKs of Discrete Log modules
-  - Support additional prime-order elliptic curves:
+- Revise ECC Schnorr, Two-Party ECC Schnorr and NIZK PoKs of Discrete Log modules:
+  - To support additional prime-order elliptic curves:
     - NIST P-384 (`secp384r1`)
     - NIST P-521 (`secp521r1`)
 
 
-#### Planned Future Work:
+### Planned Future Work:
 
-- ~~Pedersen Commitments** (over Elliptic Curves)~~
+#### Cryptographic Commitments (ECC)
+- ~~Pedersen Commitments (over Elliptic Curves)~~
 - **Vector Pedersen Commitments** (over Elliptic Curves)
+
+#### BIP-340 Compatible ECC Schnorr Signatures
+- Support **[BIP-340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki) (Bitcoin standard) compatible ECC Schnorr Signatures**
+    - Using the `secp256k1` elliptic curve used by the Bitcoin & Ethereum blockchains, and incorporating specific Bitcoin
+    BIP-340 standard domain separation tags into the various cryptographic hash operations.
+- Support **BIP-340 compatible Two-Party ECC Schnorr Signatures**
+
+#### Adaptor Signatures - ECC Schnorr
 - **Adaptor Signatures for ECC Schnorr** (single-party)
-- Support for **[BIP-340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki) compatible ECC Schnorr Signatures**
-  - Using the `secp256k1` elliptic curve used by the Bitcoin & Ethereum blockchains, and incorporating specific Bitcoin
-  BIP-340 standard domain separation tags into the various cryptographic hash operations.
-- Support for **BIP-340 compatible Two-Party ECC Schnorr Signatures**
 - **Two-Party Adaptor Signatures for ECC Schnorr** (BIP-340 compatible)
-- **Zero-Knowledge Range Proofs** (based on [Bulletproofs](https://eprint.iacr.org/2017/1066.pdf))
+
+#### Adaptor Signatures - ECDSA
+- Prerequisites:
+  - **Zero-Knowledge Range Proofs** (based on [Bulletproofs](https://eprint.iacr.org/2017/1066.pdf))
+  - **Paillier** (Additively) **Homomorphic Encryption**
 - **Two-Party ECDSA Signatures** (based on [Yehuda Lindell's protocol](https://eprint.iacr.org/2017/552.pdf))
 - **Two-Party Adaptor Signatures for ECDSA**
+
+#### Blockchain-Agnostic Protocols
+- Prerequisites:
+  - **Verifiable Delay Functions** (VDFs) and **Verifiable Timed Discrete Logs** (VTDs)
+- **Universal Atomic Swaps** (UAS) protocol (based on [S.A. Thyagarajan, et al](https://eprint.iacr.org/2021/1612))
+
+#### Secure Multi-Party Computation (MCP) protocols
+- **Oblivious Transfer** (OT)
+- **Private Information Retrieval** (PIR)
