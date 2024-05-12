@@ -67,9 +67,9 @@ Curves)~~
 #### Planned Future Work:
 
 - **Adaptor Signatures for ECC Schnorr** (single-party)
-- Support for **[BIP-340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki) compatible ECC Schnorr
-Signatures**
-  - (using the `secp256k1` elliptic curve used by Bitcoin & Ethereum)
+- Support for **[BIP-340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki) compatible ECC Schnorr Signatures**
+  - Using the `secp256k1` elliptic curve used by the Bitcoin & Ethereum blockchains, and incorporating specific Bitcoin
+  BIP-340 standard domain separation tags into the various cryptographic hash operations.
 - Support for **BIP-340 compatible Two-Party ECC Schnorr Signatures**
 - **Two-Party Adaptor Signatures for ECC Schnorr** (BIP-340 compatible)
 - **Pedersen Commitments** & **Vector Pedersen Commitments** (over Elliptic Curves)
