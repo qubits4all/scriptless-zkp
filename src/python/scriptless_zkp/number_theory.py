@@ -15,6 +15,8 @@
 """
 This module provides number-theoretic functions that are used by various modules.
 """
+from Cryptodome.Util import number
+
 from libnum import sqrtmod_prime_power
 
 
@@ -92,12 +94,15 @@ def has_mod_sqrt(a: int, prime_modulus: int) -> bool:
     """
     if a in {0, 1}:
         return True
-    elif prime_modulus == 2:
+    # Special case for prime modulus 2:
+    elif prime_modulus == 2:  # note: The Legendre symbol used below is not defined for p == 2.
         return True
+    # Special case for `a == 0 mod p` or `a == 1 mod p`:
     elif a % prime_modulus in {0, 1}:
         return True
     else:
-        return legendre_symbol(a, prime_modulus) != -1
+        # Otherwise, the integer `a` has a modular square root modulo `p` if and only if it's a quadratic residue.
+        return legendre_symbol(a, prime_modulus) == 1
 
 
 def mod_sqrt(a: int, prime_modulus: int) -> tuple[int, ...]:
@@ -127,5 +132,16 @@ def mod_sqrt(a: int, prime_modulus: int) -> tuple[int, ...]:
         return positive_root, prime_modulus - positive_root
     else:  # prime_modulus % 4 == 1
         return tuple(
-            sqrtmod_prime_power(a, prime_modulus, 1)  # note: this libnum function returns a Generator
+            sqrtmod_prime_power(a, prime_modulus)  # note: this libnum function returns a Generator
         )
+
+
+def mod_inverse(a: int, prime_modulus: int) -> int:
+    """
+    Computes the modular inverse of the integer `a` modulo the odd prime `prime_modulus`. This function calculates the
+    solution to the equation `a * x == 1 mod p`, where `==` represents congruence and `p` is the prime modulus.
+    :param a: an integer for which the modular inverse will be computed.
+    :param prime_modulus: an odd prime modulus for the modular inverse computation.
+    :return: the modular inverse of `a` modulo `prime_modulus`.
+    """
+    return number.inverse(a, prime_modulus)
