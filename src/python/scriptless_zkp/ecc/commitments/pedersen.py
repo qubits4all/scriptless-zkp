@@ -26,7 +26,7 @@ from Cryptodome.PublicKey import ECC
 from Cryptodome.Util import number
 
 from scriptless_zkp.ecc import ecc_utils
-from scriptless_zkp.ecc.generators import RandomGeneratorDerivationContext
+from scriptless_zkp.ecc.generators import ECCGeneratorDerivationContext
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 
 
@@ -57,7 +57,7 @@ class PedersenCommitmentContext:
         :return: a new Pedersen commitment context for the provided elliptic curve configuration, using a derived NUMS
                  generator point.
         """
-        generator_context: RandomGeneratorDerivationContext = RandomGeneratorDerivationContext(
+        generator_context: ECCGeneratorDerivationContext = ECCGeneratorDerivationContext(
             curve_config,
             hash_algorithm=PedersenCommitmentContext.DEFAULT_NUMS_GENERATOR_HASH_ALGO,
             domain_separation_tag=PedersenCommitmentContext.NUMS_GENERATOR_DOMAIN_SEPARATOR
