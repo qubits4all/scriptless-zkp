@@ -23,7 +23,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from Cryptodome.PublicKey import ECC
-from Cryptodome.Util import number
 
 from scriptless_zkp.ecc import ecc_utils
 from scriptless_zkp.ecc.generators import ECCGeneratorDerivationContext
@@ -84,9 +83,41 @@ class PedersenCommitmentContext:
         """
         return cls(curve_config, nums_generator)
 
-    def commit(self, value: int) -> tuple[SealedPedersenCommitment, RevealedPedersenCommitment]:
-        blinding_factor: int = ecc_utils.generate_random_nonce(self.curve_config)
-        commitment: ECC.EccPoint = self.nums_generator * value + self.nums_generator * blinding_factor
+    def commit(self, committed_value: int) -> tuple[SealedPedersenCommitment, RevealedPedersenCommitment]:
+        """
+        Commits to the provided value using the Pedersen commitment scheme over the configured elliptic curve,
+        returning a sealed commitment and a revealed commitment.
+        <p>
+        The sealed commitment is shared with a verifier that will verify the commitment once opened by the committer in
+        the future. Sharing the sealed commitment with the intended verifier once it's produced is important to ensure
+        the utility of the commitment's binding property (i.e., that the committer hasn't changed the value to which
+        they've committed). The public NUMS generator point is also shared with the verifier, as it's required for
+        recalculating the commitment when the commitment is opened. (Alternatively, the verifier could re-derive the
+        NUMS generator point, if the committer and verifier agree on the specific procedure to do so.) The committer
+        must keep the revealed commitment secret until they're ready to open the sealed commitment.</p>
+        <p>
+        The revealed commitment is retained by the committer and is required for them to "open" the sealed commitment
+        later (i.e., by sharing the private committed value and the associated random blinding factor/nonce).
+        (Note: Whether the opened commitment's private values are sent to the verifier over a confidential channel or
+        can be publicly disclosed depends on the specific use case and security requirements of the protocol within
+        which the Pedersen commitment is being used.)</p>
+        <p>
+        Once in the verifier's possession, the private committed value and random blinding factor/nonce can be used to
+        recalculate the Pedersen commitment, and this elliptic curve point is compared with the sealed commitment's
+        curve point, where equal points indicates a valid commitment.
+        :param committed_value: the integer value to be committed to, which must lie in the range [0, curve_order - 1].
+        :return: a tuple containing a sealed Pedersen commitment and a revealed Pedersen commitment.
+        :raises ValueError: if the provided value to be committed to is not in the range [0, curve_order - 1].
+        """
+        if not (0 <= committed_value < self.curve_config.order):
+            raise ValueError(f"The committed value must be in the range [0, {self.curve_config.order - 1}].")
+
+        while True:
+            blinding_factor: int = ecc_utils.generate_random_nonce(self.curve_config, exclude_one=True)
+            commitment: ECC.EccPoint = self.nums_generator * committed_value + self.nums_generator * blinding_factor
+            # Ensure the calculated commitment point is not the point-at-infinity.
+            if not commitment.is_point_at_infinity():
+                break
 
         sealed_commitment: SealedPedersenCommitment = SealedPedersenCommitment(
             self.curve_config,
@@ -97,15 +128,11 @@ class PedersenCommitmentContext:
             self.curve_config,
             self.nums_generator,
             commitment,
-            value,
+            committed_value,
             blinding_factor
         )
 
         return sealed_commitment, revealed_commitment
-
-    def commit_to_bytes(self, value: bytes) -> tuple[SealedPedersenCommitment, RevealedPedersenCommitment]:
-        committed: int = number.bytes_to_long(value)
-        return self.commit(committed)
 
 
 @dataclass
