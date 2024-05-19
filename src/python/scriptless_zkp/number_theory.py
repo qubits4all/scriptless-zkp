@@ -125,15 +125,68 @@ def mod_sqrt(a: int, prime_modulus: int) -> tuple[int, ...]:
     elif a == 1 or a % prime_modulus == 1:
         return 1, prime_modulus - 1
     elif prime_modulus % 4 == 3:
-        # Compute modular square root using the identity:
-        #     `sqrt(a) mod p == +/- a^((p + 1) / 4) mod p`, where p == 3 mod 4 (for `==` here representing congruence).
+        # Compute modular square root using the following identity of Lagrange, for p == 3 mod 4:
+        #     `sqrt(a) mod p == +/- a^((p + 1) / 4) mod p`
         positive_root: int = pow(a, (prime_modulus + 1) // 4, prime_modulus)
 
         return positive_root, prime_modulus - positive_root
-    else:  # prime_modulus % 4 == 1
+    elif prime_modulus % 8 == 5:
+        # If `a` is a quartic (biquadratic) residue modulo `p`, then the square roots can be computed using the
+        # following identity of Legendre, for p == 5 mod 8:
+        if is_quartic_residue(a, prime_modulus):  # i.e., there exists an integer `x` such that `x⁴ == a mod p`
+            # Compute modular square root using the following identity, if `a` is a quartic residue modulo `p`:
+            #     `sqrt(a) mod p == +/- a^((p + 3) / 8) mod p`
+            positive_root: int = pow(a, (prime_modulus + 3) // 8, prime_modulus) % prime_modulus
+        else:  # o.w. `a` is a quartic non-residue (i.e., there exists no integer `x` such that `x⁴ == a mod p`)
+            # Compute modular square root using the following identity, if `a` is a quartic non-residue modulo `p`:
+            #     `sqrt(a) mod p == +/- (2a) * (4a)^((p - 5) / 8) mod p`
+            positive_root: int = (2 * a * pow(4 * a, (prime_modulus - 5) // 8, prime_modulus)) % prime_modulus
+
+        return positive_root, prime_modulus - positive_root
+    else:  # prime_modulus % 8 == 1
         return tuple(
             sqrtmod_prime_power(a, prime_modulus)  # note: this libnum function returns a Generator
         )
+
+
+def quartic_residue_symbol(a: int, prime_modulus: int) -> int:
+    """
+    Computes the rational quartic (biquadratic) residue symbol of the integer `a` modulo the odd prime `prime_modulus`.
+    This function returns +1 if `a` is a quartic residue modulo `prime_modulus`, and -1 if `a` is a quartic non-residue
+    modulo `prime_modulus`. A quartic residue is an integer `a` such that `n⁴ == a mod p` has an integer solution `n`
+    for prime modulus `p`.
+    :param a: the integer for which the quartic residue symbol is computed.
+    :param prime_modulus: the odd prime modulus for the quartic residue symbol computation.
+    :return: the quartic residue symbol of `a` modulo `prime_modulus`.
+    """
+    if prime_modulus % 4 == 1 and is_quadratic_residue(a, prime_modulus):
+        # For `p == 1 mod 4`, we can compute the quartic residue symbol using the following identity:
+        #    `a^((p - 1) / 4) mod p`, where `^` denotes exponentiation.
+        return pow(a, (prime_modulus - 1) // 4, prime_modulus)  # either +1 or -1
+    else:
+        return -1  # `a` is a quartic non-residue modulo `prime_modulus`
+
+
+def is_quartic_residue(a: int, prime_modulus: int) -> bool:
+    """
+    Determines whether the given integer `a` is a quartic (biquadratic) residue modulo the odd prime `prime_modulus`
+    (i.e., whether there exists an integer `n` such that `n⁴ == a mod p`).
+    :param a: an integer to be tested for being a quartic residue.
+    :param prime_modulus: an odd prime modulus for the quartic residue test.
+    :return: whether `a` is a quartic residue modulo the odd prime `prime_modulus`.
+    """
+    return quartic_residue_symbol(a, prime_modulus) == 1
+
+
+def is_quartic_nonresidue(a: int, prime_modulus: int) -> bool:
+    """
+    Determines whether the given integer `a` is a quartic (biquadratic) non-residue modulo the odd prime
+    `prime_modulus` (i.e., whether there exists no integer `n` such that `n⁴ == a mod p`).
+    :param a: an integer to be tested for being a quartic non-residue.
+    :param prime_modulus: an odd prime modulus for the quartic non-residue test.
+    :return: whether `a` is a quartic non-residue modulo the odd prime `prime_modulus`.
+    """
+    return quartic_residue_symbol(a, prime_modulus) == -1
 
 
 def mod_inverse(a: int, prime_modulus: int) -> int:
