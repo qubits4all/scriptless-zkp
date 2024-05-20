@@ -111,6 +111,10 @@ class WeierstrassEllipticCurveConfig:
         match primary_curve_name:
             case "P-256":
                 return cls.p256()
+            case "P-384":
+                return cls.p384()
+            case "P-521":
+                return cls.p521()
             case _:  # unsupported curve
                 return None
 
