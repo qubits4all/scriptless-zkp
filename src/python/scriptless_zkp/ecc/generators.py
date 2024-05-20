@@ -19,10 +19,13 @@ for use in certain cryptographic protocols, such as Pedersen commitments.
 """
 from __future__ import annotations
 
+import math
+
 from Cryptodome.PublicKey import ECC
 from Cryptodome.Random import random
 from Cryptodome.Util import number
 
+from scriptless_zkp.ecc.ecc_utils import encode_ecc_point
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 from scriptless_zkp.hashing import UniversalPrimeLengthHasher
 from scriptless_zkp.number_theory import is_quadratic_residue, mod_sqrt
@@ -30,23 +33,20 @@ from scriptless_zkp.number_theory import is_quadratic_residue, mod_sqrt
 
 class ECCGeneratorDerivationContext:
     curve_config: WeierstrassEllipticCurveConfig
-    hash_algo: str
     domain_separator: str
 
-    MAX_CANDIDATE_TWEAKS: int = 8  # Note: Must be a power of 2.
-    DEFAULT_HASH_ALGO: str = "sha3_256"
+    MIN_CANDIDATE_MAX_TWEAKS: int = 2
+    DEFAULT_CANDIDATE_MAX_TWEAKS: int = 8  # Note: Must be a power of 2.
 
     def __init__(
             self,
             curve_config: WeierstrassEllipticCurveConfig,
-            hash_algorithm: str = DEFAULT_HASH_ALGO,
             domain_separation_tag: str | None = None
     ):
         self.curve_config = curve_config
-        self.hash_algo = hash_algorithm
         self.domain_separator = domain_separation_tag
 
-    def derive_generator_for_nonce(self, nonce: int, max_tweaks: int = MAX_CANDIDATE_TWEAKS) -> ECC.EccPoint:
+    def derive_generator_for_nonce(self, nonce: int, max_tweaks: int = DEFAULT_CANDIDATE_MAX_TWEAKS) -> ECC.EccPoint:
         """
         Derives an effectively-independent elliptic curve generator point for the provided nonce, using the configured
         elliptic curve, cryptographic hash algorithm and domain separation tag. This generator point is derived from a
@@ -80,7 +80,7 @@ class ECCGeneratorDerivationContext:
         """
         return self._derive_generator(max_tweaks, nonce)
 
-    def derive_random_generator(self, max_tweaks: int = MAX_CANDIDATE_TWEAKS) -> ECC.EccPoint:
+    def derive_random_generator(self, max_tweaks: int = DEFAULT_CANDIDATE_MAX_TWEAKS) -> ECC.EccPoint:
         """
         Derives an effectively-independent random elliptic curve generator point using a randomly generated nonce, using
         the configured elliptic curve, cryptographic hash algorithm and domain separation tag. This generator point is
@@ -124,20 +124,13 @@ class ECCGeneratorDerivationContext:
     ) -> ECC.EccPoint:
         if nonce is None and not randomize_nonce:
             raise ValueError("A nonce must be provided unless nonce randomization is selected.")
+        elif max_tweaks < ECCGeneratorDerivationContext.MIN_CANDIDATE_MAX_TWEAKS or math.log2(max_tweaks) % 1 != 0:
+            raise ValueError("The maximum number of tweaks must be a power of 2 that is greater or equal to 2.")
 
-        base_point_pub_key: ECC.EccKey = ECC.construct(
-            curve=self.curve_config.curve,
-            point_x=self.curve_config.base_point.x,
-            point_y=self.curve_config.base_point.y
-        )
-        base_point_pub_key_SEC1: bytes = base_point_pub_key.export_key(format="SEC1")
+        base_point_pub_key_SEC1: bytes = encode_ecc_point(self.curve_config, self.curve_config.base_point)
 
-        large_prime_p: int = number.getPrime(self.curve_config.curve_size_bytes * 8 + 1)
-
-        point_hasher = UniversalPrimeLengthHasher(
+        point_hasher = UniversalPrimeLengthHasher.for_field_order(
             self.curve_config.modulus,  # elliptic curve's coefficients' prime modulus
-            large_prime_p,  # large prime number for hashing
-            hash_algorithm=self.hash_algo,
             domain_separation_tag=self.domain_separator
         )
         if self.domain_separator is not None:
@@ -171,7 +164,7 @@ class ECCGeneratorDerivationContext:
     def _hunt_and_peck_for_generator(
             self,
             x_coordinate_candidate: int,
-            max_tweaks: int = MAX_CANDIDATE_TWEAKS
+            max_tweaks: int = DEFAULT_CANDIDATE_MAX_TWEAKS
     ) -> ECC.EccPoint | None:
         x_coord_least_sig_bits: int = x_coordinate_candidate & (max_tweaks - 1)  # e.g., least significant 3 bits
 
@@ -179,7 +172,7 @@ class ECCGeneratorDerivationContext:
         for i in range(-1, max_tweaks):
             if i >= 0 and i != x_coord_least_sig_bits:
                 # Munge x-coordinate candidate by replacing the last 3 least-significant bits with the bits of i.
-                mask: int = self._generate_x_coordinate_mask()
+                mask: int = self._generate_x_coordinate_mask(max_tweaks)
                 x_coord: int = x_coordinate_candidate & mask | i
 
             y_squared: int = self._check_x_coordinate_is_on_curve(x_coord)
@@ -194,11 +187,12 @@ class ECCGeneratorDerivationContext:
         else:
             return None
 
-    def _generate_x_coordinate_mask(self) -> int:
+    def _generate_x_coordinate_mask(self, max_tweaks: int) -> int:
         """
-        Generate a mask for keeping all but the last 3 bits (i in [0, 7]) of an x-coordinate candidate.
+        Generate a mask for keeping all but the last n bits of an x-coordinate candidate (e.g., 3 bits for
+        max_tweaks=8).
         """
-        return ((1 << self.curve_config.size_bits) - 1) ^ 0x7
+        return ((1 << self.curve_config.size_bits) - 1) ^ (max_tweaks - 1)
 
     def _check_x_coordinate_is_on_curve(self, x_coordinate: int) -> int | None:
         """

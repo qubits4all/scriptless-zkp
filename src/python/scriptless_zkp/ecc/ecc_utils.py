@@ -22,6 +22,7 @@ from typing import Optional
 from Cryptodome.PublicKey import ECC
 from Cryptodome.Random import random
 
+from scriptless_zkp.ecc.exceptions import InvalidECCPointException
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 
 
@@ -62,6 +63,28 @@ def generate_random_nonce_pair(
     nonce_point: ECC.EccPoint = base_point * private_nonce
 
     return private_nonce, nonce_point
+
+
+def encode_ecc_point(curve_config: WeierstrassEllipticCurveConfig, ecc_point: ECC.EccPoint) -> bytes:
+    return ecc_point_to_pubkey(curve_config, ecc_point).export_key(format='SEC1')
+
+
+def ecc_point_to_pubkey(curve_config: WeierstrassEllipticCurveConfig, ecc_point: ECC.EccPoint) -> ECC.EccKey:
+    if curve_config.is_point_on_curve(ecc_point):
+        return ECC.construct(curve=curve_config.curve, point_x=ecc_point.x, point_y=ecc_point.y)
+    else:
+        raise InvalidECCPointException(
+            ecc_curve_name=curve_config.curve,
+            point_x=ecc_point.x,
+            point_y=ecc_point.y
+        )
+
+
+def encode_public_key(public_key: ECC.EccKey) -> bytes:
+    if public_key.has_private():
+        return public_key.public_key().export_key(format='SEC1')
+    else:
+        return public_key.export_key(format='SEC1')
 
 
 def ecc_point_to_hex(ecc_point: ECC.EccPoint) -> str:
