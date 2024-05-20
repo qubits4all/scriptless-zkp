@@ -81,6 +81,7 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
     q: int
     p: int
     hash_algo: str
+    xof_hash_length: int | None
     domain_separator: Optional[str]
     _hasher: Optional[Any] = None  # cryptographic hasher as obtained via hashlib.new(hash_algo)
 
@@ -89,6 +90,7 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
             target_field_order: int,
             larger_prime_p: int,
             hash_algorithm: str = DEFAULT_HASH_ALGO,
+            xof_hash_digest_length: int | None = None,
             domain_separation_tag: Optional[str] = None
     ):
         """
@@ -111,15 +113,87 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
         elif domain_separation_tag is not None and domain_separation_tag.strip() == "":
             raise ValueError("Domain separation tag (if provided) must not be an empty-string or only whitespace.")
 
+        if xof_hash_digest_length is None:
+            hash_digest_bit_len: int = hashlib.new(hash_algorithm).digest_size * 8
+        else:
+            hash_digest_bit_len: int = xof_hash_digest_length * 8
+
+        if target_field_order.bit_length() > hash_digest_bit_len:
+            raise ValueError(
+                f"Unable to construct universal hash function for prime-order field, as its bit-length: "
+                f"({target_field_order.bit_length()} bits) exceeds the bit-length: ({hash_digest_bit_len} bits) of the "
+                f"specified '{hash_algorithm}' hash algorithm's output size."
+            )
+        elif xof_hash_digest_length is not None and hash_algorithm != hashlib.shake_256().name:
+            raise ValueError(
+                f"Unable to construct universal hash function with XOF hash length: ({xof_hash_digest_length} bytes) "
+                f"for non-SHAKE-256 hash algorithm: {hash_algorithm}"
+            )
+
         self.q = target_field_order
         self.p = larger_prime_p
         self.hash_algo = hash_algorithm
+        self.xof_hash_length = xof_hash_digest_length
         self.domain_separator = domain_separation_tag
+
+    @classmethod
+    def for_field_order(
+            cls,
+            target_field_order: int,
+            domain_separation_tag: str | None = None
+    ) -> UniversalPrimeLengthHasher:
+        field_order_bit_length: int = target_field_order.bit_length()
+
+        match field_order_bit_length:
+            case bits if bits <= 256:
+                large_prime_p: int = number.getPrime(256 + 1)
+                hash_algo: str = hashlib.sha3_256().name
+
+                return cls(
+                    target_field_order,
+                    large_prime_p,
+                    hash_algorithm=hash_algo,
+                    domain_separation_tag=domain_separation_tag
+                )
+            case bits if 256 < bits <= 384:
+                large_prime_p: int = number.getPrime(384 + 1)
+                hash_algo: str = hashlib.sha3_384().name
+
+                return cls(
+                    target_field_order,
+                    large_prime_p,
+                    hash_algorithm=hash_algo,
+                    domain_separation_tag=domain_separation_tag
+                )
+            case bits if 384 < bits <= 512:
+                large_prime_p: int = number.getPrime(512 + 1)
+                hash_algo: str = hashlib.sha3_512().name
+
+                return cls(
+                    target_field_order,
+                    large_prime_p,
+                    hash_algorithm=hash_algo,
+                    domain_separation_tag=domain_separation_tag
+                )
+            case bits:  # bits > 512 (e.g., 521 bits for NIST P-521 curve)
+                large_prime_p: int = number.getPrime(bits + 1)
+                hash_algo: str = hashlib.shake_256().name
+                xof_hash_len: int = (bits + 7) // 8  # ceil(bits / 8) -- e.g., 521 bits -> 66 bytes (528 bits)
+
+                return cls(
+                    target_field_order,
+                    large_prime_p,
+                    hash_algorithm=hash_algo,
+                    xof_hash_digest_length=xof_hash_len,
+                    domain_separation_tag=domain_separation_tag
+                )
 
     def update(self, message: bytes) -> UniversalPrimeLengthHasher:
         # Lazily initialize hasher, to simplify invalid state detection re: digest(), intdigest() & hexdigest() methods.
-        if self._hasher is None:
+        if self._hasher is None and self.xof_hash_length is None:
             self._hasher = hashlib.new(self.hash_algo)
+        elif self._hasher is None and self.xof_hash_length is not None:
+            self._hasher = hashlib.shake_256()
 
             # Initialize hasher state with hash of a domain separation tag, if one was provided.
             if self.domain_separator:
@@ -136,10 +210,14 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
                 f"to calling digest()."
             )
 
-        full_hash_bytes: bytes = self._hasher.digest()
+        if self.xof_hash_length is not None:
+            full_hash_bytes: bytes = self._hasher.digest(self.xof_hash_length)
+        else:
+            full_hash_bytes: bytes = self._hasher.digest()
+
         self._hasher = None  # Reset hasher state after digesting.
 
-        return self._carter_wegman_hash(full_hash_bytes, self.q, self.p)
+        return UniversalPrimeLengthHasher._carter_wegman_hash(full_hash_bytes, self.q, self.p)
 
     def digest(self) -> bytes:
         return number.long_to_bytes(self.intdigest())
@@ -150,7 +228,7 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
     def hash_to_int(self, message: bytes) -> int:
         full_hash_bytes: bytes = self._hash_to_full_bytes(message)
 
-        return self._carter_wegman_hash(full_hash_bytes, self.q, self.p)
+        return UniversalPrimeLengthHasher._carter_wegman_hash(full_hash_bytes, self.q, self.p)
 
     def hash(self, message: bytes) -> bytes:
         return number.long_to_bytes(self.hash_to_int(message))
@@ -164,14 +242,20 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
             hasher = hashlib.new(self.hash_algo)
             hasher.update(self.domain_separator.encode('utf-8'))
             hasher.update(message)
-            full_hash_bytes: bytes = hasher.digest()
-        else:
-            # Otherwise, calculate hash in one shot.
-            full_hash_bytes: bytes = hashlib.new(self.hash_algo, message).digest()
+            if self.xof_hash_length is not None:
+                full_hash_bytes: bytes = hashlib.shake_256(message).digest(self.xof_hash_length)
+            else:
+                full_hash_bytes: bytes = hasher.digest()
+        else:  # Otherwise, calculate hash in one shot.
+            if self.xof_hash_length is not None:
+                full_hash_bytes: bytes = hashlib.shake_256(message).digest(self.xof_hash_length)
+            else:
+                full_hash_bytes: bytes = hashlib.new(self.hash_algo, message).digest()
 
         return full_hash_bytes
 
-    def _carter_wegman_hash(self, message_hash: bytes, q: int, p: int) -> int:
+    @staticmethod
+    def _carter_wegman_hash(message_hash: bytes, q: int, p: int) -> int:
         """
         Produces a universal hash of the given message, which maps onto a prime-order field for a specified prime `q`,
         given an associated prime `p` greater than the size of the hash output of the configured cryptographic hash
