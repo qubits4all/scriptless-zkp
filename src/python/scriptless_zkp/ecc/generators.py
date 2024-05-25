@@ -131,7 +131,8 @@ class ECCGeneratorDerivationContext:
 
         point_hasher = UniversalPrimeLengthHasher.for_field_order(
             self.curve_config.modulus,  # elliptic curve's coefficients' prime modulus
-            domain_separation_tag=self.domain_separator
+            domain_separation_tag=self.domain_separator,
+            deterministic=True  # Ensure deterministic hash output for reproducibility.
         )
         if self.domain_separator is not None:
             point_hasher.update(self.domain_separator.encode('utf-8'))
