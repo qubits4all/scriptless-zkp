@@ -33,8 +33,7 @@ class PedersenCommitmentContext:
     curve_config: WeierstrassEllipticCurveConfig
     nums_generator: ECC.EccPoint
 
-    DEFAULT_NUMS_GENERATOR_NONCE: int = 1
-    DEFAULT_NUMS_GENERATOR_HASH_ALGO: str = "sha3_256"
+    DEFAULT_NUMS_GENERATOR_NONCE: int = 0
     NUMS_GENERATOR_DOMAIN_SEPARATOR: str = "Pedersen-NUMS-Generator"
 
     def __init__(self, curve_config: WeierstrassEllipticCurveConfig, nums_generator: ECC.EccPoint):
@@ -58,7 +57,6 @@ class PedersenCommitmentContext:
         """
         generator_context: ECCGeneratorDerivationContext = ECCGeneratorDerivationContext(
             curve_config,
-            hash_algorithm=PedersenCommitmentContext.DEFAULT_NUMS_GENERATOR_HASH_ALGO,
             domain_separation_tag=PedersenCommitmentContext.NUMS_GENERATOR_DOMAIN_SEPARATOR
         )
 

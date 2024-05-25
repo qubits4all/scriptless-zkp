@@ -166,12 +166,12 @@ class ECCGeneratorDerivationContext:
             x_coordinate_candidate: int,
             max_tweaks: int = DEFAULT_CANDIDATE_MAX_TWEAKS
     ) -> ECC.EccPoint | None:
-        x_coord_least_sig_bits: int = x_coordinate_candidate & (max_tweaks - 1)  # e.g., least significant 3 bits
+        x_coord_least_sig_bits: int = x_coordinate_candidate & (max_tweaks - 1)  # e.g., least significant n bits
 
         x_coord: int = x_coordinate_candidate
         for i in range(-1, max_tweaks):
             if i >= 0 and i != x_coord_least_sig_bits:
-                # Munge x-coordinate candidate by replacing the last 3 least-significant bits with the bits of i.
+                # Munge x-coordinate candidate by replacing the last n least-significant bits with the bits of i.
                 mask: int = self._generate_x_coordinate_mask(max_tweaks)
                 x_coord: int = x_coordinate_candidate & mask | i
 
