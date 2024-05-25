@@ -266,8 +266,10 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
 
         This algorithm produces a value in the range `[0, q-1]` for the specified prime `q`, using the following
         formula: `H_q(H(x), p) = ((a * x + b) mod p) mod q`, where `a` and `b` are random integers in the range
-        `[1, p-1]`, and `x` is the message being hashed and H(x) is the output of the configured cryptographic hash
-        with range [0, 2^n - 1] for some n (e.g., [0, 2^256 - 1] for SHA-256 or SHA3-256).
+        `[1, p-1]` if `deterministic=False`, and `x` is the message being hashed and H(x) is the output of the
+        configured cryptographic hash with range [0, 2^n - 1] for an n-bit hash (e.g., [0, 2^256 - 1] for SHA3-256).
+        If `deterministic=True`, the coefficients `a` and `b` are derived deterministically from the message hash,
+        using the SHAKE-256 XOF hash function.
 
         :param message_hash: the cryptographic hash of the message being hashed to the target prime-order field.
         :param q: the order of the target field to which this universal hash output should map, which should be a prime
