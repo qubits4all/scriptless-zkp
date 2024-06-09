@@ -34,7 +34,7 @@ all liability or warrantability related to its use.
     - Generation of elliptic curve generator points for which _nobody_ knows the discrete logarithm w.r.t. the base
     point `G`.
 
-#### Cryptographic Commitments (Elliptic Curve-based) [[scriptless_zkp.ecc.commitments](https://github.com/qubits4all/scriptless-zkp/tree/feature/GI-11-NIZK-PoK-of-equal-discrete-logs/src/python/scriptless_zkp/ecc/commitments)]
+#### Cryptographic Commitments (Elliptic Curve-based) [[scriptless_zkp.ecc.commitments](https://github.com/qubits4all/scriptless-zkp/tree/feature/GI-16-ECC-pedersen-commitments/src/python/scriptless_zkp/ecc/commitments)]
   - **Pedersen Commitments** (over Elliptic Curves) [`scriptless_zkp.ecc.commitments.pedersen`]
 
 #### Cryptographic Commitments [[scriptless_zkp.commitments](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/commitments)]
