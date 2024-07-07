@@ -11,9 +11,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ###############################################################################
+
 from __future__ import annotations
 
-import secrets
 from dataclasses import dataclass
 
 from Cryptodome.Util import number
@@ -21,7 +21,7 @@ from Cryptodome.Util import number
 import libnum
 
 
-MIN_KEY_SIZE: int = 2048      # Note: Minimum key-size needed for use in Y. Lindell's 2-Party ECDSA protocol.
+MIN_KEY_SIZE: int = 2048      # Note: Min. key-size for use in Y. Lindell's 2-Party ECDSA protocol w/ 256-bit ECC keys.
 DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key size of 3072 bits.
 
 
@@ -30,7 +30,7 @@ class PaillierPrivateKey:
     p: int                  # First secret prime factor of public modulus n.
     q: int                  # Second secret prime factor of public modulus n.
     lam: int                # λ(n) = lcm(p-1, q-1) -- The Carmichael function of n.
-    mu: int                 #
+    mu: int                 # λ(n)^-1 mod n -- The modular multiplicative inverse of λ(n) modulo n.
     _n: int | None = None
     _n2: int | None = None
 
@@ -50,13 +50,13 @@ class PaillierPrivateKey:
 
         return self._n2
 
-    def decrypt(self, ciphertext: int) -> int:
-        if ciphertext < 0 or ciphertext >= self.n_squared:
+    def decrypt(self, ciphertext: EncryptedUnsignedInteger) -> int:
+        if ciphertext.encrypted < 0 or ciphertext.encrypted >= self.n_squared:
             raise ValueError("Ciphertext is out of range for decryption.")
 
         # TODO: Double-check correctness of the following line.
         return libnum.invmod(
-            pow(ciphertext, self.lam, self.n_squared) - 1,
+            pow(ciphertext.encrypted, self.lam, self.n_squared) - 1,
             self.n
         ) * self.mu % self.n
 
@@ -75,7 +75,7 @@ class PaillierPublicKey:
 
         return self._n2
 
-    def encrypt(self, message: int) -> int:
+    def encrypt(self, message: int) -> EncryptedUnsignedInteger:
         if message < 0 or message >= self.n_squared:
             raise ValueError("Message is out of range for encryption.")
 
@@ -85,9 +85,11 @@ class PaillierPublicKey:
             pass
 
         # TODO: Double-check correctness of the following.
-        return (
+        encrypted: int = (
             pow(self.g, message, self.n_squared) * pow(r, self.n, self.n_squared)
         ) % self.n_squared
+
+        return EncryptedUnsignedInteger(encrypted, self)
 
 
 # TODO: Add support for key-pair serialization/deserialization.
@@ -105,10 +107,11 @@ class PaillierKeyPair:
         if key_size_bits < MIN_KEY_SIZE:
             raise ValueError(f"Paillier key-size must be at least [{MIN_KEY_SIZE}] bits.")
 
-        p: int = number.getPrime(key_size_bits // 2)
-        q: int = number.getPrime(key_size_bits // 2)
+        prime_factor_size_bits: int = key_size_bits // 2
+        p: int = number.getPrime(prime_factor_size_bits)
+        q: int = number.getPrime(prime_factor_size_bits)
         n = p * q
-        lam = (p - 1) * (q - 1)
+        lam = (p - 1) * (q - 1)     # Note: Using phi(n) instead of λ(n) for efficiency (avoiding LCM computation).
         mu = libnum.invmod(lam, n)
         g = n + 1
 
@@ -116,3 +119,34 @@ class PaillierKeyPair:
         pub_key = PaillierPublicKey(n, g)
 
         return PaillierKeyPair(pub_key, priv_key)
+
+
+@dataclass
+class EncryptedUnsignedInteger:
+    """
+    EncryptedUnsignedInteger represents an unsigned integer value encrypted using the Paillier cryptosystem.
+    """
+    encrypted: int
+    public_key: PaillierPublicKey
+
+    def __init__(self, encrypted: int, public_key: PaillierPublicKey):
+        self.encrypted = encrypted
+        self.public_key = public_key
+
+    def __add__(self, other_encrypted: EncryptedUnsignedInteger) -> EncryptedUnsignedInteger:
+        if self.public_key != other_encrypted.public_key:
+            raise ValueError("Homomorphic addition operands must have the same public key.")
+
+        return EncryptedUnsignedInteger(
+            (self.encrypted * other_encrypted.encrypted) % self.public_key.n_squared,
+            self.public_key
+        )
+
+    def __mul__(self, scalar: int) -> EncryptedUnsignedInteger:
+        return EncryptedUnsignedInteger(
+            pow(self.encrypted, scalar, self.public_key.n_squared),
+            self.public_key
+        )
+
+    def decrypt(self, private_key: PaillierPrivateKey) -> int:
+        return private_key.decrypt(self)
