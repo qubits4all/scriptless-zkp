@@ -1,3 +1,17 @@
+###############################################################################
+# (c) 2023, 2024 W. Spann Systems Consulting
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+###############################################################################
+
 """
 Classes providing support for ECC Schnorr digital signatures.
 """
@@ -21,7 +35,7 @@ from scriptless_zkp.ecc import (
 )
 from scriptless_zkp.ecc.exceptions import InvalidECCPublicKeyException, IncorrectECCSchnorrSignatureCurveException
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
-from scriptless_zkp.hashing import PrimeLengthTruncatedHasher
+from scriptless_zkp.hashing import PrimeBasedTruncatedHasher
 
 
 class SchnorrContext:
@@ -56,7 +70,12 @@ class SchnorrContext:
         return self.ecc_point_to_pubkey(ecc_point).export_key(format='SEC1')
 
     def ecc_point_to_pubkey(self, ecc_point: ECC.EccPoint) -> ECC.EccKey:
-        return ECC.construct(curve=self.ecc_curve_config.curve, point_x=ecc_point.x, point_y=ecc_point.y)
+        if self.ecc_curve_config.is_point_on_curve(ecc_point):
+            return ECC.construct(curve=self.ecc_curve_config.curve, point_x=ecc_point.x, point_y=ecc_point.y)
+        else:
+            raise ValueError(
+                f"Provided ECC point is not on the configured elliptic curve: '{self.ecc_curve_config.curve}'"
+            )
 
     def generate_key_pair(self) -> ECC.EccKey:
         return ECC.generate(curve=self.ecc_curve_config.curve)
@@ -205,7 +224,7 @@ class SchnorrKeyPair:
         random_nonce: int = int(random_nonce_pair.d)                 # random nonce: `r`
         random_nonce_point: ECC.EccPoint = random_nonce_pair.pointQ  # nonce point: `R := r*G`
 
-        hasher = PrimeLengthTruncatedHasher(self.context.q, self.context.message_hash_algo)
+        hasher = PrimeBasedTruncatedHasher(self.context.q, self.context.message_hash_algo)
         hash_e: int = hasher.update(                           # hash: `e := H(Q || R || m)`
             self.context.encode_public_key(self.ecc_key_pair)  # public key point `Q := x*G` encoded ('SEC1')
         ).update(
@@ -286,7 +305,7 @@ class SchnorrPublicKey:
 
         # Calculate the truncated hash "e := H(Q || R || m)" of the public key, the signature's public nonce point &
         # the message associated with the Schnorr signature (truncated to the ECC curve's bit-length).
-        truncated_hasher = PrimeLengthTruncatedHasher(
+        truncated_hasher = PrimeBasedTruncatedHasher(
             self.context.ecc_curve_config.order,
             self.context.message_hash_algo
         )

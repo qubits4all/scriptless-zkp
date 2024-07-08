@@ -19,19 +19,22 @@ all liability or warrantability related to its use.
 
 **NOTE:** R&D-only Status (see above disclaimer)
 
-#### Digital Signatures (single-party) [[scriptless_zkp.ecc.signatures](https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/ecc/signatures)]
+#### Digital Signatures (single-party) [[scriptless_zkp.ecc.signatures](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc/signatures)]
   - **Schnorr Signatures on Elliptic Curves** (ECC Schnorr) [`scriptless_zkp.ecc.signatures.schnorr`]
     - Currently supported (Weierstrass) prime-order elliptic curves: **NIST P-256** (`secp256r1`)
 
-#### Two-Party Digital Signatures  [[scriptless_zkp.ecc.signatures](https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/ecc/signatures)]
+#### Two-Party Digital Signatures  [[scriptless_zkp.ecc.signatures](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc/signatures)]
   - **Two-Party ECC Schnorr Signatures** [`scriptless_zkp.ecc.signatures.two_party_schnorr`]
     - Features verification via a joint public key & indistinguishability from single-party ECC Schnorr signatures.
 
-#### Elliptic Curve Cryptography (ECC) [[scriptless_zkp.ecc](https://github.com/qubits4all/scriptless-zkp/tree/feature/GI-11-NIZK-PoK-of-equal-discrete-logs/src/python/scriptless_zkp/ecc)]
+#### Elliptic Curve Cryptography (ECC) [[scriptless_zkp.ecc](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc)]
   - Support for prime-order elliptic curves (Weierstrass form) [`scriptless_zkp.ecc.weierstrass_curves`]
     - **NIST P-256** (`secp256r1`), **NIST P-384** (`secp384r1`), **NIST P-521** (`secp521r1`)
+  - Support derivation of effectively independent ECC generator points [`scriptless_zkp.ecc.ecc_utils`]
+    - Generation of elliptic curve generator points for which _nobody_ knows the discrete logarithm w.r.t. the base
+    point `G`.
 
-#### Cryptographic Commitments [[scriptless_zkp.commitments](https://github.com/qubits4all/scriptless-zkp/blob/develop/src/python/scriptless_zkp/commitments)]
+#### Cryptographic Commitments [[scriptless_zkp.commitments](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/commitments)]
   - **HMAC-based & Blake2b-based Keyed-Hash Commitments** [`scriptless_zkp.commitments.hmac_commitments`]
 
 #### Non-Interactive Zero-Knowledge (NIZK) Proofs (over Elliptic Curves) [[scriptless_zkp.ecc.zkp](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc/zkp)]
@@ -64,9 +67,9 @@ Curves)~~
 #### Planned Future Work:
 
 - **Adaptor Signatures for ECC Schnorr** (single-party)
-- Support for **[BIP-340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki) compatible ECC Schnorr
-Signatures**
-  - (using the `secp256k1` elliptic curve used by Bitcoin & Ethereum)
+- Support for **[BIP-340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki) compatible ECC Schnorr Signatures**
+  - Using the `secp256k1` elliptic curve used by the Bitcoin & Ethereum blockchains, and incorporating specific Bitcoin
+  BIP-340 standard domain separation tags into the various cryptographic hash operations.
 - Support for **BIP-340 compatible Two-Party ECC Schnorr Signatures**
 - **Two-Party Adaptor Signatures for ECC Schnorr** (BIP-340 compatible)
 - **Pedersen Commitments** & **Vector Pedersen Commitments** (over Elliptic Curves)
