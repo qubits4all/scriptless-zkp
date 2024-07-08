@@ -141,6 +141,35 @@ class SealedPedersenCommitment:
     nums_generator: ECC.EccPoint
     commitment: ECC.EccPoint
 
+    def __add__(self, other) -> SealedPedersenCommitment:
+        """
+        Adds this sealed Pedersen commitment to another sealed Pedersen commitment homomorphically, returning a new
+        sealed commitment that is a commitment to the sum of the committed values (up to a blinding factor, equal to
+        the sum of the original commitments' blinding factors).
+        :param other: the other sealed Pedersen commitment to homomorphically add to this commitment.
+        :return: a new sealed Pedersen commitment that is a commitment to the sum of the committed values of the
+                 original two (sealed) Pedersen commitments.
+        """
+        if not isinstance(other, SealedPedersenCommitment):
+            raise TypeError("Unsupported operand type for +: %s" % type(other))
+        elif self.curve_config != other.curve_config:
+            raise ValueError(
+                "Homomorphic addition of (sealed) Pedersen commitments is only supported for commitments on the same"
+                " elliptic curve."
+            )
+        elif self.nums_generator != other.nums_generator:
+            raise ValueError(
+                "Homomorphic addition of (sealed) Pedersen commitments is only supported for commitments with the same"
+                " NUMS generator point `H`."
+            )
+
+        # Add the commitments' curve points together, and return a new sealed commitment.
+        return SealedPedersenCommitment(
+            self.curve_config,
+            self.nums_generator,
+            self.commitment + other.commitment  # homomorphic addition of commitments ( `C(x) + C(y) = C(x + y)` ).
+        )
+
 
 @dataclass
 class RevealedPedersenCommitment:
@@ -149,6 +178,38 @@ class RevealedPedersenCommitment:
     commitment: ECC.EccPoint
     committed: int
     blinding_factor: int
+
+    def __add__(self, other) -> RevealedPedersenCommitment:
+        """
+        Adds this revealed Pedersen commitment to another revealed Pedersen commitment homomorphically, returning a new
+        revealed commitment that is a commitment to the sum of the committed values (up to a blinding factor, equal to
+        the sum of the original commitments' blinding factors).
+        :param other: the other revealed Pedersen commitment to homomorphically add to this commitment.
+        :return: a new revealed Pedersen commitment that is a commitment to the sum of the committed values of the
+                 original two (revealed) Pedersen commitments.
+        """
+        if not isinstance(other, RevealedPedersenCommitment):
+            raise TypeError("Unsupported operand type for +: %s" % type(other))
+        elif self.curve_config != other.curve_config:
+            raise ValueError(
+                "Homomorphic addition of (revealed) Pedersen commitments is only supported for commitments on the same"
+                " elliptic curve."
+            )
+        elif self.nums_generator != other.nums_generator:
+            raise ValueError(
+                "Homomorphic addition of (revealed) Pedersen commitments is only supported for commitments with the"
+                " same NUMS generator point `H`."
+            )
+
+        # Add the commitments' curve points together, along with the committed (secret) values and blinding factors,
+        # and return a new revealed commitment.
+        return RevealedPedersenCommitment(
+            self.curve_config,
+            self.nums_generator,
+            self.commitment + other.commitment,  # homomorphic addition of commitments ( `C(x) + C(y) = C(x + y)` ).
+            self.committed + other.committed,
+            self.blinding_factor + other.blinding_factor
+        )
 
     def verify(self) -> bool:
         # Recalculate the commitment, using the revealed committed value and blinding factor.
