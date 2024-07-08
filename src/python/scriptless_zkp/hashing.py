@@ -74,7 +74,7 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
     signatures variant, then a different approach should be used.
 
     Note: This class is not thread-safe. (Use a thread-local for a hasher instance per thread, if needed in a
-    multithreading context.)
+      multithreading context.)
     """
     DEFAULT_HASH_ALGO: str = hashlib.sha3_256().name
 
@@ -237,14 +237,15 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
         return self.hash(message).hex()
 
     def _hash_to_full_bytes(self, message: bytes) -> bytes:
-        # Initialize hasher state with hash of a domain separation tag, if one was provided.
+        # Initialize hasher or XOF state by hashing a domain separation tag, if one was provided.
         if self.domain_separator:
-            hasher = hashlib.new(self.hash_algo)
-            hasher.update(self.domain_separator.encode('utf-8'))
-            hasher.update(message)
             if self.xof_hash_length is not None:
-                full_hash_bytes: bytes = hashlib.shake_256(message).digest(self.xof_hash_length)
+                xof = hashlib.shake_256(self.domain_separator.encode('utf-8') + message)
+                full_hash_bytes: bytes = xof.digest(self.xof_hash_length)
             else:
+                hasher = hashlib.new(self.hash_algo)
+                hasher.update(self.domain_separator.encode('utf-8'))
+                hasher.update(message)
                 full_hash_bytes: bytes = hasher.digest()
         else:  # Otherwise, calculate hash in one shot.
             if self.xof_hash_length is not None:
