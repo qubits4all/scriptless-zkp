@@ -1,3 +1,17 @@
+###############################################################################
+# (c) 2023, 2024 W. Spann Systems Consulting
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+###############################################################################
+
 """
 Provides an interactive signing protocol supporting two-party Schnorr signatures, a supporting distributed key
 generation protocol for collaboratively generating private key-shares and a joint public key, and a signature verifier
@@ -22,19 +36,19 @@ import attrs
 from Cryptodome.PublicKey import ECC
 
 from scriptless_zkp import PartyId
-from scriptless_zkp.ecc.ecc_exceptions import (
+from scriptless_zkp.ecc.exceptions import (
     InvalidECCPublicKeyException, IncorrectECCCurveException, IncorrectECCSchnorrSignatureCurveException,
     InvalidECCPointException
 )
-from scriptless_zkp.ecc.ecc_utils import WeierstrassEllipticCurveConfig
 from scriptless_zkp.ecc.signatures.schnorr import SchnorrContext, SchnorrSignature
+from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 from scriptless_zkp.ecc.zkp.nizk_dlog_proof import (
     NIZKDiscreteLogParameters, NIZKDiscreteLogProver, NIZKDiscreteLogProof, NIZKDiscreteLogVerifier
 )
 from scriptless_zkp.ecc.zkp.nizk_dlog_proof_commitments import (
     DiscreteLogProofCommitmentUtils, SealedDiscreteLogProofCommitment, RevealedDiscreteLogProofCommitment
 )
-from scriptless_zkp.hashing import PrimeLengthTruncatedHasher
+from scriptless_zkp.hashing import PrimeBasedTruncatedHasher
 
 
 class TwoPartySchnorrContext:
@@ -104,16 +118,18 @@ class TwoPartySchnorrContext:
 
     def ecc_point_to_pubkey(self, ecc_point: ECC.EccPoint) -> ECC.EccKey:
         """Converts an ECC point to an ECC public-key ``EccKey`` object."""
-        return ECC.construct(curve=self.ecc_curve_config.curve, point_x=ecc_point.x, point_y=ecc_point.y)
+        if self.verify_ecc_point(ecc_point):
+            return ECC.construct(curve=self.ecc_curve_config.curve, point_x=ecc_point.x, point_y=ecc_point.y)
+        else:
+            raise ValueError(
+                f"Provided ECC point is not on the configured elliptic curve: '{self.ecc_curve_config.curve}'"
+            )
 
     def verify_ecc_point(self, ecc_point: ECC.EccPoint) -> bool:
-        """Returns whether the provided ECC point is on the configured elliptic curve."""
-        try:
-            self.ecc_point_to_pubkey(ecc_point)
-        except ValueError:
-            return False
-        else:
-            return True
+        """
+        Returns whether the provided ECC point is on the configured elliptic curve, inclusive of the point-at-infinity.
+        """
+        return self.ecc_curve_config.is_point_on_curve(ecc_point)
 
 
 class TwoPartySchnorrSigner:
@@ -263,7 +279,7 @@ class TwoPartySchnorrSigner:
         self._verify_public_nonce_share(responder_public_nonce)
 
         # Construct a bit-length LSB(s)-truncated hasher w/ same bit-length as the ECC curve group's (<G>) order (q).
-        truncated_hasher = PrimeLengthTruncatedHasher(
+        truncated_hasher = PrimeBasedTruncatedHasher(
             self.context.ecc_curve_config.order,
             self.context.message_hash_algo
         )
@@ -375,7 +391,7 @@ class TwoPartySchnorrSigner:
         self._verify_public_nonce_share(initiator_public_nonce)
 
         # Construct a bit-length LSB(s)-truncated hasher w/ same bit-length as the ECC curve group's (<G>) order (q).
-        truncated_hasher = PrimeLengthTruncatedHasher(
+        truncated_hasher = PrimeBasedTruncatedHasher(
             self.context.ecc_curve_config.order,
             self.context.message_hash_algo
         )
@@ -456,7 +472,7 @@ class TwoPartySchnorrSigner:
         # Ensure the Initiator-provided public nonce-share's ECC point is on the configured elliptic curve.
         if not self.context.verify_ecc_point(public_nonce_share):
             raise InvalidECCPointException(
-                ecc_curve_config=self.context.ecc_curve_config,
+                ecc_curve_name=self.context.ecc_curve_config.curve,
                 point_x=public_nonce_share.x,
                 point_y=public_nonce_share.y,
                 msg=f"Invalid public nonce-share received from 2-party ECC Schnorr signing sub-protocol's {party_str}"
@@ -652,7 +668,7 @@ class TwoPartySchnorrKeyShare:
                 )
 
         # Construct a bit-length LSB(s)-truncated hasher w/ same bit-length as the ECC curve group's (<G>) order (q).
-        truncated_hasher = PrimeLengthTruncatedHasher(context.ecc_curve_config.order, context.key_hash_algo)
+        truncated_hasher = PrimeBasedTruncatedHasher(context.ecc_curve_config.order, context.key_hash_algo)
 
         # Calculate outer hash of unhardened public keys: "h := H'(H(P1 || P2) || P1)" or "h := H'(H(P1 || P2) || P2)",
         # depending on whether Party #1 (initiator) or Party #2 (responder).
@@ -705,7 +721,7 @@ class TwoPartySchnorrKeyShare:
             counterparty_public_unhardened_key_share: ECC.EccKey
     ) -> ECC.EccKey:
         # Construct a bit-length LSB(s)-truncated hasher w/ same bit-length as the ECC curve group's (<G>) order (q).
-        truncated_hasher = PrimeLengthTruncatedHasher(context.ecc_curve_config.order, context.key_hash_algo)
+        truncated_hasher = PrimeBasedTruncatedHasher(context.ecc_curve_config.order, context.key_hash_algo)
 
         # Calculate outer hash of unhardened public keys: "h := H'(H(P1 || P2) || P1)" or "h := H'(H(P1 || P2) || P2)",
         # depending on whether Party #1 (initiator) or Party #2 (responder).
@@ -868,7 +884,7 @@ class JointSchnorrPublicKey:
 
         # Calculate the truncated hash "e := H'(Q || R || m)" of the joint public key, the signature's public nonce
         # point & the message associated with the two-party Schnorr signature (truncated to the ECC curve's bit-length).
-        truncated_hasher = PrimeLengthTruncatedHasher(self.context.ecc_curve_config.order, self.context.message_hash_algo)
+        truncated_hasher = PrimeBasedTruncatedHasher(self.context.ecc_curve_config.order, self.context.message_hash_algo)
         pubkey_nonce_message_hash: int = truncated_hasher.hash_to_int(
             joint_pubkey_bytes + signature_nonce_point_bytes + message  # concatenate bytes ("Q || R || m")
         )

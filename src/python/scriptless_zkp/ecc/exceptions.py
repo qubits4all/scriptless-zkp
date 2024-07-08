@@ -1,8 +1,20 @@
+###############################################################################
+# (c) 2022, 2023, 2024 W. Spann Systems Consulting
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+###############################################################################
+
 """Custom exception classes used by elliptic curve cryptography (ECC) classes."""
 
 from typing import Optional
-
-from scriptless_zkp.ecc.ecc_utils import WeierstrassEllipticCurveConfig
 
 
 class InvalidECCPublicKeyException(Exception):
@@ -17,7 +29,7 @@ class InvalidECCPublicKeyException(Exception):
 class InvalidECCPointException(Exception):
     def __init__(
             self,
-            ecc_curve_config: WeierstrassEllipticCurveConfig,
+            ecc_curve_name: str,
             point_x: int,
             point_y: int,
             msg: Optional[str] = None
@@ -26,10 +38,10 @@ class InvalidECCPointException(Exception):
         if msg is not None:
             message = f"{msg} -- {message}"
 
-        message = f"{message} [curve={ecc_curve_config.curve}, point_x={point_x}, point_y={point_y}]"
+        message = f"{message} [curve={ecc_curve_name}, point_x={point_x}, point_y={point_y}]"
 
         super().__init__(message)
-        self.ecc_curve_config = ecc_curve_config
+        self.ecc_curve = ecc_curve_name
         self.point_x = point_x
         self.point_y = point_y
         self.msg = message
