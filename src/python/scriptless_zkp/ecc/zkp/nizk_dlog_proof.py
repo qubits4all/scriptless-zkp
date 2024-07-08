@@ -14,7 +14,7 @@ from Cryptodome.PublicKey import ECC
 from Cryptodome.Util import number
 
 from scriptless_zkp import STRING_ENCODING_FIELD_DELIMITER
-from scriptless_zkp.ecc.ecc_utils import WeierstrassEllipticCurveConfig
+from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 
 
 class NIZKDiscreteLogCommon:

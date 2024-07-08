@@ -16,7 +16,7 @@ from scriptless_zkp import PartyId, STRING_ENCODING_FIELD_DELIMITER
 from scriptless_zkp.commitments.hmac_commitments import (
     KeyedHashCommitment, KeyedHashCommitmentUtils, RevealedKeyedHashCommitment
 )
-from scriptless_zkp.ecc.ecc_utils import WeierstrassEllipticCurveConfig
+from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 from scriptless_zkp.ecc.zkp.nizk_dlog_proof import (
     NIZKDiscreteLogProof, NIZKDiscreteLogProver, NIZKDiscreteLogVerifier, NIZKDiscreteLogParameters
 )

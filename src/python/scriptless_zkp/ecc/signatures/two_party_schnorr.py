@@ -22,12 +22,12 @@ import attrs
 from Cryptodome.PublicKey import ECC
 
 from scriptless_zkp import PartyId
-from scriptless_zkp.ecc.ecc_exceptions import (
+from scriptless_zkp.ecc.exceptions import (
     InvalidECCPublicKeyException, IncorrectECCCurveException, IncorrectECCSchnorrSignatureCurveException,
     InvalidECCPointException
 )
-from scriptless_zkp.ecc.ecc_utils import WeierstrassEllipticCurveConfig
 from scriptless_zkp.ecc.signatures.schnorr import SchnorrContext, SchnorrSignature
+from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 from scriptless_zkp.ecc.zkp.nizk_dlog_proof import (
     NIZKDiscreteLogParameters, NIZKDiscreteLogProver, NIZKDiscreteLogProof, NIZKDiscreteLogVerifier
 )

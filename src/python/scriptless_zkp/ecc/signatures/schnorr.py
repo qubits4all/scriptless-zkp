@@ -19,8 +19,8 @@ from scriptless_zkp.ecc import (
     DEFAULT_ECC_PRIVATE_KEY_ENCODING_METHOD, DEFAULT_PKCS8_HMAC_SHA1_SALT_BYTES, MIN_PKCS8_PASSPHRASE_LENGTH,
     DEFAULT_ECC_POINT_ENCODING_METHOD
 )
-from scriptless_zkp.ecc.ecc_utils import WeierstrassEllipticCurveConfig
-from scriptless_zkp.ecc.ecc_exceptions import InvalidECCPublicKeyException, IncorrectECCSchnorrSignatureCurveException
+from scriptless_zkp.ecc.exceptions import InvalidECCPublicKeyException, IncorrectECCSchnorrSignatureCurveException
+from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 from scriptless_zkp.hashing import PrimeLengthTruncatedHasher
 
 
