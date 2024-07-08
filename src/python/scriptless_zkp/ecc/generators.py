@@ -14,7 +14,7 @@
 
 """
 This module supports the derivation of random elliptic curve generator points, for which nobody knows the associated
-discrete logarithm. This is useful for generating effectively independent NUMS (Non-Uniform Message Sampling) generators
+discrete logarithm. This is useful for generating effectively independent NUMS (Nothing Up My Sleeve) generators
 for use in certain cryptographic protocols, such as Pedersen commitments.
 """
 from __future__ import annotations
