@@ -112,7 +112,9 @@ class PedersenCommitmentContext:
 
         while True:
             blinding_factor: int = ecc_utils.generate_random_nonce(self.curve_config, exclude_one=True)
-            commitment: ECC.EccPoint = self.nums_generator * committed_value + self.nums_generator * blinding_factor
+            commitment: ECC.EccPoint = (
+                self.curve_config.base_point * committed_value + self.nums_generator * blinding_factor
+            )
             # Ensure the calculated commitment point is not the point-at-infinity.
             if not commitment.is_point_at_infinity():
                 break
