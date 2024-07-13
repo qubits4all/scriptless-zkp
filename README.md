@@ -83,15 +83,20 @@ Curves)~~
 
 #### Adaptor Signatures - ECDSA
 - Prerequisites:
-  - **Zero-Knowledge Range Proofs** (based on [Bulletproofs](https://eprint.iacr.org/2017/1066.pdf))
   - **Paillier** (Additively) **Homomorphic Encryption**
-- **Two-Party ECDSA Signatures** (based on [Yehuda Lindell's protocol](https://eprint.iacr.org/2017/552.pdf))
+  - **Zero-Knowledge Range Proofs** (based on Y. Lindell's [Paillier-based ZKP protocol](https://eprint.iacr.org/2017/552.pdf) (see: Appendix A))
+- **Two-Party ECDSA Signatures** (based on [Y. Lindell's protocol](https://eprint.iacr.org/2017/552.pdf))
 - **Two-Party Adaptor Signatures for ECDSA**
 
 #### Blockchain-Agnostic Protocols
 - Prerequisites:
   - **Verifiable Delay Functions** (VDFs) and **Verifiable Timed Discrete Logs** (VTDs)
 - **Universal Atomic Swaps** (UAS) protocol (based on [S.A. Thyagarajan, et al](https://eprint.iacr.org/2021/1612))
+
+#### Zero-Knowledge Contingent Payment (zkCP) Protocols
+- Prerequisites:
+  - **Zero-Knowledge Set Membership Proofs** (based on [Bulletproofs](https://eprint.iacr.org/2017/1066.pdf))
+  - **Zero-Knowledge Range Proofs** (based on [Bulletproofs](https://eprint.iacr.org/2017/1066.pdf))
 
 #### Secure Multi-Party Computation (MCP) protocols
 - **Oblivious Transfer** (OT)
