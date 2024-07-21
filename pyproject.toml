@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "scriptless-zkp"
+version = "0.3.0-alpha"
+description = 'Scriptless-ZKP - Adaptor & multi-party signatures, zero-knowledge proofs (ZKPs) & "scriptless" scripts'
+authors = ["qubits4all <qubits4all@users.noreply.github.com>"]
+
+packages = [
+    { include = "src/python/scriptless_zkp" },
+    { include = "src/python/scriptless_zkp/**/*.py" },
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+attrs = "~23.2.0"
+pycryptodomex = "~3.20.0"
+libnum = "~1.7.1"
+
+# Transitive dependencies:
+certifi = "^2024.7.4"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"
