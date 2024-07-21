@@ -1,6 +1,6 @@
 [project]
 name = "scriptless_zkp"
-version = "0.3.0-alpha"
+version = "0.2.0"
 authors = [
   { name="qubits4all", email="qubits4all@users.noreply.github.com" },
 ]
