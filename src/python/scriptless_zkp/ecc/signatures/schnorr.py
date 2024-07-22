@@ -38,6 +38,7 @@ from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 from scriptless_zkp.hashing import PrimeBasedTruncatedHasher
 
 
+# TODO: Add support for specifying a domain separator for the Schnorr signature's hash function.
 class SchnorrContext:
     """
     Configuration parameters for ECC Schnorr digital signatures, including ECC parameters and message hash algorithm.
