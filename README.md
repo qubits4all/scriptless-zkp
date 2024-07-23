@@ -22,6 +22,7 @@ all liability or warrantability related to its use.
 #### Digital Signatures (single-party) [[scriptless_zkp.ecc.signatures](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc/signatures)]
   - **Schnorr Signatures on Elliptic Curves** (ECC Schnorr) [`scriptless_zkp.ecc.signatures.schnorr`]
     - Currently supported (Weierstrass) prime-order elliptic curves: **NIST P-256** (`secp256r1`)
+  - **Adaptor Signatures for ECC Schnorr** (a.k.a. Verifiable Encrypted Signatures) [`scriptless_zkp.ecc.signatures.adaptor_schnorr`]
 
 #### Two-Party Digital Signatures  [[scriptless_zkp.ecc.signatures](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc/signatures)]
   - **Two-Party ECC Schnorr Signatures** [`scriptless_zkp.ecc.signatures.two_party_schnorr`]
@@ -58,6 +59,8 @@ all liability or warrantability related to its use.
 Curves)~~
 - ~~NIZK Proofs of Knowledge (PoKs) of _Equal_ Discrete Logarithms
 (based on the Chaum-Pedersen protocol)~~
+- **Two-Party Adaptor Signatures for ECC Schnorr**
+  - (incl. optional specification of a domain separation tag)
 - ECC Schnorr, Two-Party ECC Schnorr and NIZK PoKs of Discrete Log modules
   - Support additional prime-order elliptic curves:
     - NIST P-384 (`secp384r1`)
@@ -66,7 +69,7 @@ Curves)~~
 
 #### Planned Future Work:
 
-- **Adaptor Signatures for ECC Schnorr** (single-party)
+- ~~Adaptor Signatures for ECC Schnorr (single-party)~~
 - Support for **[BIP-340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki) compatible ECC Schnorr Signatures**
   - Using the `secp256k1` elliptic curve used by the Bitcoin & Ethereum blockchains, and incorporating specific Bitcoin
   BIP-340 standard domain separation tags into the various cryptographic hash operations.
