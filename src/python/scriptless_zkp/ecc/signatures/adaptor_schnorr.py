@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 from Cryptodome.PublicKey import ECC
 
+from scriptless_zkp.ecc import ecc_utils
 from scriptless_zkp.ecc.signatures.schnorr import SchnorrSignature
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 from scriptless_zkp.hashing import UniversalPrimeLengthHasher
@@ -79,7 +80,34 @@ class AdaptorSchnorrKeyPair:
         return self.ecc_key_pair.public_key()
 
     def sign(self, adaptor_public_tweak_key: ECC.EccKey, message: bytes) -> AdaptorSchnorrPreSignature:
-        pass
+        """
+        Produce an adaptor Schnorr pre-signature using the provided public tweak key and message.
+        :param adaptor_public_tweak_key: the adaptor public tweak key (`Y`) used to tweak the nonce point (`R`).
+        :param message: the message to be signed.
+        :return: an adaptor ECC Schnorr pre-signature composed of the tuple `(R', s')`, where `R'` is a tweaked public
+                 nonce point `(R + Y)` and `s'` is the pre-signature scalar.
+        """
+        nonce_pair: ECC.EccKey = ecc_utils.generate_random_nonce_pair(self.context.curve_config, exclude_one=True)
+
+        # Compute the tweaked public nonce point: `R' := R + Y`, where `R` is the random public nonce point and `Y` is
+        # the public tweak point.
+        tweaked_public_nonce: ECC.EccPoint = nonce_pair.pointQ + adaptor_public_tweak_key.pointQ
+
+        # Compute the pre-signature hash: `e' := H_q(X | R+Y | m)`, where `X` is the public key, `R` is the nonce point,
+        # `Y` is the public tweak point, `m` is the message being signed, `|` denotes concatenation, and `H_q(...)` is a
+        # prime-length hasher configured for the elliptic curve's sub-group order (`q`) (i.e., to produce hashes in the
+        # range `[0, q-1]`).
+        presig_hash: int = self.context.hasher.update(
+            ecc_utils.encode_public_key(self.public_key)
+        ).update(
+            ecc_utils.encode_ecc_point(self.context.curve_config, tweaked_public_nonce)
+        ).update(message).intdigest()
+
+        # Compute the pre-signature scalar: `s' := k + e' * x mod q`, where `k` is the nonce scalar, `e'` is the
+        # pre-signature hash, `x` is the private key, and `q` is the elliptic curve sub-group order.
+        presig_scalar: int = (nonce_pair.d + presig_hash * self.private_key) % self.context.q
+
+        return AdaptorSchnorrPreSignature(self.context, tweaked_public_nonce, presig_scalar)
 
 
 class AdaptorSchnorrTweakPair:
