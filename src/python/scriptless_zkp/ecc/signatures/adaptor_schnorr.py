@@ -170,7 +170,53 @@ class AdaptorSchnorrPublicKeys:
         return self.public_ecc_key.pointQ
 
     def verify_presignature(self, adaptor_presignature: AdaptorSchnorrPreSignature, message: bytes) -> bool:
-        pass
+        """
+        Verifies an adaptor ECC Schnorr pre-signature against the provided message, given this
+        `AdaptorSchnorrPublicKeys` object's public signature verification key and public tweak key/point.
+        :param adaptor_presignature: the adaptor ECC Schnorr pre-signature to be verified.
+        :param message: the message against which the pre-signature is to be verified.
+        :return: whether the provided pre-signature is valid for the given message (and this object's public signature
+                 verification key & public tweak key/point).
+        """
+        # Re-compute the pre-signature hash: `e' := H_q(X | R' | m)`, where `X` is the public key, `R'` is the tweaked
+        # public nonce point (i.e., `R' := R + Y`) taken directly from the pre-signature, `Y` is the public tweak point,
+        # `m` is the message being signed, `|` denotes concatenation, and `H_q(...)` is a prime-length hasher configured
+        # for the elliptic curve's sub-group order (`q`) (i.e., to produce hashes in the range `[0, q-1]`).
+        presig_hash: int = self.context.hasher.update(
+            ecc_utils.encode_public_key(self.public_ecc_key)
+        ).update(
+            ecc_utils.encode_ecc_point(self.context.curve_config, adaptor_presignature.public_nonce)
+        ).update(message).intdigest()
+
+        # If the pre-signature hash is zero, then the provided pre-signature is invalid (i.e., up to the given message,
+        # public signature verification key & public tweak key/point).
+        if presig_hash == 0:
+            return False
+
+        # Compute the pre-signature nonce-based verification EC point: `R' + e' * X`, where `R'` is the tweaked public
+        # nonce point, `e'` is the pre-signature hash, and `X` is the public signature verification key.
+        nonce_derived_verification_point: ECC.EccPoint = adaptor_presignature.public_nonce + (
+            self.public_key_point * presig_hash
+        )
+
+        # If the pre-signature's nonce-based verification EC point is the elliptic curve group's unit
+        # (i.e., the point-at-infinity), then the provided pre-signature is invalid.
+        if nonce_derived_verification_point.is_point_at_infinity():
+            return False
+
+        presig_scalar_derived_verification_point: ECC.EccPoint = self.public_tweak + (
+            self.context.curve_config.base_point * adaptor_presignature.presignature
+        )
+
+        # If the pre-signature's scalar-based verification EC point is the elliptic curve group's unit
+        # (i.e., the point-at-infinity), then the provided pre-signature is invalid.
+        if presig_scalar_derived_verification_point.is_point_at_infinity():
+            return False
+
+        # The pre-signature is valid (for the given message, public signature verification key & public tweak key/point)
+        # if the pre-signature's nonce-based verification EC point matches the pre-signature's scalar-based verification
+        # EC point. Otherwise, the pre-signature is invalid. (`s' * G + Y == R' + H_q(X | R' | m) * X`)
+        return presig_scalar_derived_verification_point == nonce_derived_verification_point
 
 
 @dataclass
