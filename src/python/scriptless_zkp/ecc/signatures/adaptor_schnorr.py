@@ -18,11 +18,12 @@ Provides support for adaptor ECC Schnorr digital signatures (a.k.a. verifiable e
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 from Cryptodome.PublicKey import ECC
 
 from scriptless_zkp.ecc import ecc_utils
-from scriptless_zkp.ecc.signatures.schnorr import SchnorrSignature
+from scriptless_zkp.ecc.signatures.schnorr import SchnorrSignature, SchnorrContext
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 from scriptless_zkp.hashing import UniversalPrimeLengthHasher
 
@@ -53,6 +54,9 @@ class AdaptorSchnorrContext:
 
     def generate_adaptor_tweak_pair(self) -> AdaptorSchnorrTweakPair:
         return AdaptorSchnorrTweakPair.generate(self)
+
+    def as_schnorr_context(self) -> SchnorrContext:
+        return SchnorrContext(self.curve_config, message_hash_algorithm=self.hasher.hash_algo)
 
 
 class AdaptorSchnorrKeyPair:
@@ -169,11 +173,11 @@ class AdaptorSchnorrPublicKeys:
     def public_key_point(self) -> ECC.EccPoint:
         return self.public_ecc_key.pointQ
 
-    def verify_presignature(self, adaptor_presignature: AdaptorSchnorrPreSignature, message: bytes) -> bool:
+    def verify_pre_signature(self, adaptor_pre_signature: AdaptorSchnorrPreSignature, message: bytes) -> bool:
         """
         Verifies an adaptor ECC Schnorr pre-signature against the provided message, given this
         `AdaptorSchnorrPublicKeys` object's public signature verification key and public tweak key/point.
-        :param adaptor_presignature: the adaptor ECC Schnorr pre-signature to be verified.
+        :param adaptor_pre_signature: the adaptor ECC Schnorr pre-signature to be verified.
         :param message: the message against which the pre-signature is to be verified.
         :return: whether the provided pre-signature is valid for the given message (and this object's public signature
                  verification key & public tweak key/point).
@@ -185,7 +189,7 @@ class AdaptorSchnorrPublicKeys:
         presig_hash: int = self.context.hasher.update(
             ecc_utils.encode_public_key(self.public_ecc_key)
         ).update(
-            ecc_utils.encode_ecc_point(self.context.curve_config, adaptor_presignature.public_nonce)
+            ecc_utils.encode_ecc_point(self.context.curve_config, adaptor_pre_signature.public_nonce)
         ).update(message).intdigest()
 
         # If the pre-signature hash is zero, then the provided pre-signature is invalid (i.e., up to the given message,
@@ -195,7 +199,7 @@ class AdaptorSchnorrPublicKeys:
 
         # Compute the pre-signature nonce-based verification EC point: `R' + e' * X`, where `R'` is the tweaked public
         # nonce point, `e'` is the pre-signature hash, and `X` is the public signature verification key.
-        nonce_derived_verification_point: ECC.EccPoint = adaptor_presignature.public_nonce + (
+        nonce_derived_verification_point: ECC.EccPoint = adaptor_pre_signature.public_nonce + (
             self.public_key_point * presig_hash
         )
 
@@ -205,7 +209,7 @@ class AdaptorSchnorrPublicKeys:
             return False
 
         presig_scalar_derived_verification_point: ECC.EccPoint = self.public_tweak + (
-            self.context.curve_config.base_point * adaptor_presignature.presignature
+                self.context.curve_config.base_point * adaptor_pre_signature.pre_signature
         )
 
         # If the pre-signature's scalar-based verification EC point is the elliptic curve group's unit
@@ -223,27 +227,64 @@ class AdaptorSchnorrPublicKeys:
 class AdaptorSchnorrPreSignature:
     context: AdaptorSchnorrContext
     public_nonce: ECC.EccPoint
-    presignature: int
+    pre_signature: int
 
     def __init__(
             self,
             context: AdaptorSchnorrContext,
             public_nonce: ECC.EccPoint,
-            presignature_scalar: int
+            pre_signature_scalar: int
     ):
         self.context = context
         self.public_nonce = public_nonce
-        self.presignature = presignature_scalar
+        self.pre_signature = pre_signature_scalar
 
     def verify(self, adaptor_public_key: AdaptorSchnorrPublicKeys, message: bytes) -> bool:
-        return adaptor_public_key.verify_presignature(self, message)
+        return adaptor_public_key.verify_pre_signature(self, message)
 
     def adapt_to_signature(self, adaptor_private_tweak: int) -> SchnorrSignature:
-        pass
+        """
+        Adapts an adaptor ECC Schnorr pre-signature to a full signature, using the provided adaptor private tweak.
+        """
+        # Adapt pre-signature scalar using adaptor private tweak: `s := s' + y`
+        full_sig_scalar: int = (self.pre_signature + adaptor_private_tweak) % self.context.q
+
+        return SchnorrSignature(self.context.as_schnorr_context(), self.public_nonce, full_sig_scalar)
 
     def extract_private_tweak(
             self,
             full_signature: SchnorrSignature,
             adaptor_public_keys: AdaptorSchnorrPublicKeys
-    ) -> int:
-        pass
+    ) -> Optional[int]:
+        """
+        Attempts to extract the adaptor private tweak, given a full signature adapted from this pre-signature
+        (i.e., via the `adapt_to_signature(...)` method; returning `None` if a valid private tweak could not be
+        calculated via the given signature.
+        :param full_signature: a full ECC Schnorr signature adapted from this adaptor pre-signature.
+        :param adaptor_public_keys: the ECC Schnorr public key and adaptor public tweak key. The latter is used to
+                verify the adaptor private tweak extracted from the provided signature is valid before returning it.
+        :return: the extracted adaptor private tweak, if it could be calculated and verified; otherwise, `None`.
+        :raises ValueError: if the provided full signature was constructed using a different elliptic curve than was
+                used to construct this adaptor pre-signature.
+        """
+
+        if self.context.curve_config.has_curve_name(full_signature.context.ecc_curve_config.curve):
+            raise ValueError(
+                f"Unable to extract the adaptor private tweak from the provided ECC Schnorr signature constructed using"
+                f" a different elliptic curve than was used to construct this adaptor pre-signature."
+            )
+
+        private_tweak: int = (full_signature.signature - self.pre_signature) % self.context.q
+
+        # Compute the verification point: `Y' := y' * G`, where `y'` is the extracted private tweak, and `Y'` is the
+        # verification point, which should equal the adaptor public tweak point if the extracted private tweak is valid.
+        verification_point: ECC.EccPoint = self.context.curve_config.base_point * private_tweak
+
+        # If the calculated verification point is unequal to the adaptor public tweak point, or is the elliptic curve
+        # group's unit (i.e., the point-at-infinity), then the extracted private tweak is invalid.
+        #
+        if verification_point != adaptor_public_keys.public_tweak or verification_point.is_point_at_infinity():
+            return None
+        else:
+            # Return a valid adaptor private tweak if the following is true: `y' * G == Y`
+            return private_tweak
