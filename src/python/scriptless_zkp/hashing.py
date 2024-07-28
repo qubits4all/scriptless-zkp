@@ -62,6 +62,14 @@ class ReducedRangeHasher(ABC):
         pass
 
     @abstractmethod
+    def reset(self) -> ReducedRangeHasher:
+        pass
+
+    @abstractmethod
+    def is_reset(self) -> bool:
+        pass
+
+    @abstractmethod
     def hash_to_int(self, message: bytes) -> int:
         pass
 
@@ -204,10 +212,21 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
             deterministic=deterministic
         )
 
+    def reset(self) -> UniversalPrimeLengthHasher:
+        self._hasher = None
+        return self
+
+    def is_reset(self) -> bool:
+        return self._hasher is None
+
     def update(self, message: bytes) -> UniversalPrimeLengthHasher:
         # Lazily initialize hasher, to simplify invalid state detection re: digest(), intdigest() & hexdigest() methods.
         if self._hasher is None and self.xof_hash_length is None:
             self._hasher = hashlib.new(self.hash_algo)
+
+            # Initialize hasher state with hash of a domain separation tag, if one was provided.
+            if self.domain_separator:
+                self._hasher.update(self.domain_separator.encode('utf-8'))
         elif self._hasher is None and self.xof_hash_length is not None:
             self._hasher = hashlib.shake_256()
 
@@ -405,6 +424,13 @@ class PrimeBasedTruncatedHasher(ReducedRangeHasher):
                 f"than the specified '{self.hash_algo}' hash algorithm's digest size (bits): "
                 f"{self.nontruncated_bit_length}"
             )
+
+    def reset(self) -> PrimeBasedTruncatedHasher:
+        self._hasher = None
+        return self
+
+    def is_reset(self) -> bool:
+        return self._hasher is None
 
     def update(self, message: bytes) -> PrimeBasedTruncatedHasher:
         # Lazily initialize hasher, to simplify invalid state detection re: digest(), intdigest() & hexdigest() methods.

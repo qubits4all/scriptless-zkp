@@ -155,7 +155,7 @@ class WeierstrassEllipticCurveConfig:
             y_squared: int = pow(point.y, 2, self.modulus)
             x_cubed: int = pow(point.x, 3, self.modulus)
 
-            return y_squared == (x_cubed + self.coeff_a * point.x + self.coeff_b) % self.modulus
+            return y_squared == (x_cubed + self.coeff_a * int(point.x) + self.coeff_b) % self.modulus
         else:
             return True  # the identity element (point-at-infinity) is always considered "on the curve"
 

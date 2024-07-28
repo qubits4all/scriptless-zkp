@@ -42,7 +42,11 @@ class AdaptorSchnorrContext:
     ):
         self.curve_config = ecc_curve_config
         self.domain_separator = domain_separation_tag
-        self.hasher = UniversalPrimeLengthHasher.for_field_order(self.q, domain_separation_tag=self.domain_separator)
+        self.hasher = UniversalPrimeLengthHasher.for_field_order(
+            self.q,
+            domain_separation_tag=self.domain_separator,
+            deterministic=True  # ensure deterministic hashing for reproducibility
+        )
 
     @property
     def q(self) -> int:
@@ -73,7 +77,7 @@ class AdaptorSchnorrKeyPair:
 
     @property
     def private_key(self) -> int:
-        return self.ecc_key_pair.d
+        return int(self.ecc_key_pair.d)
 
     @property
     def public_key_point(self) -> ECC.EccPoint:
@@ -93,15 +97,22 @@ class AdaptorSchnorrKeyPair:
         """
         # Loop until a valid ECC Schnorr adaptor pre-signature is produced, repeating nonce generation as necessary.
         while True:
-            nonce_pair: ECC.EccKey = ecc_utils.generate_random_nonce_pair(self.context.curve_config, exclude_one=True)
+            private_nonce, public_nonce_point = ecc_utils.generate_random_nonce_pair(
+                self.context.curve_config,
+                exclude_one=True
+            )
 
             # Compute the tweaked public nonce point: `R' := R + Y`, where `R` is the random public nonce point and `Y`
             # is the public tweak point.
-            tweaked_public_nonce: ECC.EccPoint = nonce_pair.pointQ + adaptor_public_tweak_key.pointQ
+            tweaked_public_nonce: ECC.EccPoint = public_nonce_point + adaptor_public_tweak_key.pointQ
 
             # Ensure the tweaked public nonce point is not the elliptic curve group's unit (i.e., point-at-infinity).
             if tweaked_public_nonce.is_point_at_infinity():
                 continue
+
+            # Ensure the hasher is reset before updating it, to calculate the pre-signature hash.
+            if not self.context.hasher.is_reset():
+                raise ValueError("Prime-length hasher has not been reset since its last use.")
 
             # Compute the pre-signature hash: `e' := H_q(X | R+Y | m)`, where `X` is the public key, `R` is the nonce
             # point, `Y` is the public tweak point, `m` is the message being signed, `|` denotes concatenation, and
@@ -120,7 +131,7 @@ class AdaptorSchnorrKeyPair:
 
             # Compute the pre-signature scalar: `s' := k + e' * x mod q`, where `k` is the nonce scalar, `e'` is the
             # pre-signature hash, `x` is the private key, and `q` is the elliptic curve sub-group order.
-            presig_scalar: int = (nonce_pair.d + presig_hash * self.private_key) % self.context.q
+            presig_scalar: int = (private_nonce + presig_hash * self.private_key) % self.context.q
 
             # Ensure the pre-signature scalar is non-zero, which is also a requirement for producing a valid ECC
             # Schnorr adaptor pre-signature.
@@ -144,7 +155,7 @@ class AdaptorSchnorrTweakPair:
 
     @property
     def private_tweak(self) -> int:
-        return self.tweak_key_pair.d
+        return int(self.tweak_key_pair.d)
 
     @property
     def public_tweak(self) -> ECC.EccPoint:
@@ -182,6 +193,10 @@ class AdaptorSchnorrPublicKeys:
         :return: whether the provided pre-signature is valid for the given message (and this object's public signature
                  verification key & public tweak key/point).
         """
+        # Ensure the hasher is reset before updating it, to calculate the pre-signature hash.
+        if not self.context.hasher.is_reset():
+            raise ValueError("Prime-length hasher has not been reset since its last use.")
+
         # Re-compute the pre-signature hash: `e' := H_q(X | R' | m)`, where `X` is the public key, `R'` is the tweaked
         # public nonce point (i.e., `R' := R + Y`) taken directly from the pre-signature, `Y` is the public tweak point,
         # `m` is the message being signed, `|` denotes concatenation, and `H_q(...)` is a prime-length hasher configured
