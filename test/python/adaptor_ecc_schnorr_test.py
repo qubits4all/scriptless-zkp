@@ -1,5 +1,7 @@
 import unittest
 
+from typing import Optional
+
 from scriptless_zkp.ecc.signatures.adaptor_schnorr import (
     AdaptorSchnorrContext, AdaptorSchnorrKeyPair, AdaptorSchnorrTweakPair, AdaptorSchnorrPreSignature,
     AdaptorSchnorrPublicKeys
@@ -97,9 +99,11 @@ class AdaptorECCSchnorrTests(unittest.TestCase):
             "ECC Schnorr signature verification failed."
         )
 
-    def test_pre_signature_adapt_no_domain_separator(self):
-        key_pair = AdaptorSchnorrKeyPair.generate(self.context_without_domain_sep)
-        tweak_pair = AdaptorSchnorrTweakPair.generate(self.context_without_domain_sep)
+    def test_extract_adaptor_tweak(self):
+        key_pair = AdaptorSchnorrKeyPair.generate(self.context)
+        tweak_pair = AdaptorSchnorrTweakPair.generate(self.context)
+
+        adaptor_pub_keys = AdaptorSchnorrPublicKeys(self.context, key_pair.public_key, tweak_pair.public_tweak_key)
 
         test_message: bytes = b'foo'
         pre_sig: AdaptorSchnorrPreSignature = key_pair.sign(tweak_pair.public_tweak_key, test_message)
@@ -107,11 +111,15 @@ class AdaptorECCSchnorrTests(unittest.TestCase):
         # Adapt the pre-signature to a full signature using the private tweak key.
         signature: SchnorrSignature = pre_sig.adapt_to_signature(tweak_pair.private_tweak)
 
-        schnorr_public_key = SchnorrPublicKey(self.context_without_domain_sep.as_schnorr_context(), key_pair.public_key)
-        # Verify the adapted full signature using the public key.
-        self.assertTrue(
-            schnorr_public_key.verify_signature(signature, test_message),
-            "ECC Schnorr signature verification failed."
+        # Extract the adaptor tweak from the full signature.
+        private_tweak: Optional[int] = pre_sig.extract_private_tweak(signature, adaptor_pub_keys)
+
+        # Verify the extracted private tweak is correct.
+        self.assertIsNotNone(private_tweak)
+        self.assertEqual(
+            private_tweak,
+            tweak_pair.private_tweak,
+            "Extracted private tweak does not match the original private tweak."
         )
 
 
