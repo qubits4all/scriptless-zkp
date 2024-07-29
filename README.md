@@ -21,8 +21,9 @@ all liability or warrantability related to its use.
 
 #### Digital Signatures (single-party) [[scriptless_zkp.ecc.signatures](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc/signatures)]
   - **Schnorr Signatures on Elliptic Curves** (ECC Schnorr) [`scriptless_zkp.ecc.signatures.schnorr`]
-    - Currently supported (Weierstrass) prime-order elliptic curves: **NIST P-256** (`secp256r1`)
+    - Supported elliptic curves: **NIST P-256** (`secp256r1`), NIST P-384 (`secp384r1`), NIST P-521 (`secp521r1`)
   - **Adaptor Signatures for ECC Schnorr** (a.k.a. Verifiable Encrypted Signatures) [`scriptless_zkp.ecc.signatures.adaptor_schnorr`]
+    - Supported elliptic curves: **NIST P-256** (`secp256r1`), NIST P-384 (`secp384r1`), NIST P-521 (`secp521r1`)
 
 #### Two-Party Digital Signatures  [[scriptless_zkp.ecc.signatures](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc/signatures)]
   - **Two-Party ECC Schnorr Signatures** [`scriptless_zkp.ecc.signatures.two_party_schnorr`]
@@ -61,7 +62,7 @@ Curves)~~
 (based on the Chaum-Pedersen protocol)~~
 - **Two-Party Adaptor Signatures for ECC Schnorr**
   - (incl. optional specification of a domain separation tag)
-- ECC Schnorr, Two-Party ECC Schnorr and NIZK PoKs of Discrete Log modules
+- Two-Party ECC Schnorr and NIZK PoKs of Discrete Log modules
   - Support additional prime-order elliptic curves:
     - NIST P-384 (`secp384r1`)
     - NIST P-521 (`secp521r1`)
