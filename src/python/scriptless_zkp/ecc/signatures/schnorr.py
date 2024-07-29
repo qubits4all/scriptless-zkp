@@ -238,9 +238,6 @@ class SchnorrKeyPair:
             message
         ).intdigest() % self.context.q
 
-        # DEBUG
-        print(f"Schnorr sig. generation -- hash_e: {hash_e}")
-
         signature: int = (random_nonce + hash_e * self.private_key) % self.context.q
 
         return SchnorrSignature(self.context, random_nonce_point, signature)
