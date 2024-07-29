@@ -51,6 +51,8 @@ from scriptless_zkp.ecc.zkp.nizk_dlog_proof_commitments import (
 from scriptless_zkp.hashing import PrimeBasedTruncatedHasher
 
 
+# TODO: Add support for specifying a domain separator for the 2-party Schnorr signature's hash function, and using the
+#   prime-length universal hasher instead of the truncated bit-length hasher.
 class TwoPartySchnorrContext:
     """
     Configuration parameters for two-party ECC Schnorr digital signatures, including ECC parameters, and message & key
@@ -105,7 +107,7 @@ class TwoPartySchnorrContext:
         This is useful for construction of ``SchnorrSignature`` instances, which are agnostic re: whether they were
         constructed via the single-party signing algorithm or two-party signing protocol. </p>
         """
-        return SchnorrContext(self.ecc_curve_config, message_hash_algorithm=self.message_hash_algo)
+        return SchnorrContext(self.ecc_curve_config)
 
     @staticmethod
     def encode_public_key(public_key: ECC.EccKey) -> bytes:
