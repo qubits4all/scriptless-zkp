@@ -23,6 +23,7 @@ from typing import Optional
 from Cryptodome.PublicKey import ECC
 
 from scriptless_zkp.ecc import ecc_utils
+from scriptless_zkp.ecc.exceptions import IncorrectECCCurveException
 from scriptless_zkp.ecc.signatures.schnorr import SchnorrSignature, SchnorrContext
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 from scriptless_zkp.hashing import UniversalPrimeLengthHasher
@@ -285,10 +286,13 @@ class AdaptorSchnorrPreSignature:
                 used to construct this adaptor pre-signature.
         """
 
-        if self.context.curve_config.has_curve_name(full_signature.context.ecc_curve_config.curve):
-            raise ValueError(
-                f"Unable to extract the adaptor private tweak from the provided ECC Schnorr signature constructed using"
-                f" a different elliptic curve than was used to construct this adaptor pre-signature."
+        if not self.context.curve_config.has_curve_name(full_signature.context.ecc_curve_config.curve):
+            raise IncorrectECCCurveException(
+                expected_ecc_curve=self.context.curve_config.curve,
+                provided_ecc_curve=full_signature.context.ecc_curve_config.curve,
+                message="Unable to extract the adaptor private tweak from the provided ECC Schnorr signature, which was"
+                        " constructed using a different elliptic curve than was used to construct this adaptor"
+                        " pre-signature"
             )
 
         private_tweak: int = (full_signature.signature - self.pre_signature) % self.context.q
