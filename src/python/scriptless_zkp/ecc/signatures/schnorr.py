@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-import hashlib
 
 from typing import Optional
 
@@ -35,29 +34,32 @@ from scriptless_zkp.ecc import (
 )
 from scriptless_zkp.ecc.exceptions import InvalidECCPublicKeyException, IncorrectECCSchnorrSignatureCurveException
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
-from scriptless_zkp.hashing import PrimeBasedTruncatedHasher
+from scriptless_zkp.hashing import UniversalPrimeLengthHasher
 
 
 class SchnorrContext:
     """
     Configuration parameters for ECC Schnorr digital signatures, including ECC parameters and message hash algorithm.
     """
-    DEFAULT_HASH_ALGO: str = hashlib.sha256().name  # Note: 256-bit hash req'd for 256-bit ECC curves.
+    DEFAULT_DOMAIN_SEPARATOR: str = "ECCSchnorr"
 
     ecc_curve_config: WeierstrassEllipticCurveConfig
     q: int
-    message_hash_algo: str
-    message_hash_length: int
+    hasher: UniversalPrimeLengthHasher
 
     def __init__(
             self,
             ecc_curve_config: WeierstrassEllipticCurveConfig,
-            message_hash_algorithm: str = DEFAULT_HASH_ALGO
+            domain_separation_tag: Optional[str] = DEFAULT_DOMAIN_SEPARATOR
     ):
         self.ecc_curve_config: WeierstrassEllipticCurveConfig = ecc_curve_config
         self.q: int = self.ecc_curve_config.order
-        self.message_hash_algo: str = message_hash_algorithm
-        self.message_hash_length: int = hashlib.new(self.message_hash_algo).digest_size
+
+        self.hasher = UniversalPrimeLengthHasher.for_field_order(
+            self.q,
+            domain_separation_tag=domain_separation_tag,
+            deterministic=True
+        )
 
     @staticmethod
     def encode_public_key(public_key: ECC.EccKey) -> bytes:
@@ -142,6 +144,10 @@ class SchnorrKeyPair:
     def public_key(self) -> SchnorrPublicKey:
         return SchnorrPublicKey(self.context, self.ecc_key_pair.public_key())
 
+    @property
+    def private_key(self) -> int:
+        return int(self.ecc_key_pair.d)
+
     def export_private_key(
             self,
             encryption_passphrase: bytes | str,
@@ -224,14 +230,15 @@ class SchnorrKeyPair:
         random_nonce: int = int(random_nonce_pair.d)                 # random nonce: `r`
         random_nonce_point: ECC.EccPoint = random_nonce_pair.pointQ  # nonce point: `R := r*G`
 
-        hasher = PrimeBasedTruncatedHasher(self.context.q, self.context.message_hash_algo)
-        hash_e: int = hasher.update(                           # hash: `e := H(Q || R || m)`
+        hash_e: int = self.context.hasher.update(                           # hash: `e := H(Q || R || m)`
             self.context.encode_public_key(self.ecc_key_pair)  # public key point `Q := x*G` encoded ('SEC1')
         ).update(
             self.context.encode_ecc_point(random_nonce_point)  # nonce point `R` encoded ('SEC1')
-        ).update(message).intdigest()
+        ).update(
+            message
+        ).intdigest() % self.context.q
 
-        signature: int = (random_nonce + hash_e * int(self.ecc_key_pair.d)) % self.context.q
+        signature: int = (random_nonce + hash_e * self.private_key) % self.context.q
 
         return SchnorrSignature(self.context, random_nonce_point, signature)
 
@@ -305,13 +312,13 @@ class SchnorrPublicKey:
 
         # Calculate the truncated hash "e := H(Q || R || m)" of the public key, the signature's public nonce point &
         # the message associated with the Schnorr signature (truncated to the ECC curve's bit-length).
-        truncated_hasher = PrimeBasedTruncatedHasher(
-            self.context.ecc_curve_config.order,
-            self.context.message_hash_algo
-        )
-        pubkey_nonce_message_hash: int = truncated_hasher.hash_to_int(
-            pubkey_bytes + signature_nonce_point_bytes + message  # concatenate bytes ("Q || R || m")
-        )
+        pubkey_nonce_message_hash: int = self.context.hasher.update(
+            self.context.encode_public_key(self.public_ecc_key)  # SEC1-encode public key
+        ).update(
+            self.context.encode_ecc_point(schnorr_signature.public_nonce)  # SEC1-encode signature's public nonce point
+        ).update(
+            message
+        ).intdigest() % self.context.q
 
         # Calculate the full verification point "R + e*Q", where R is the signature's public nonce point, e is the hash
         # calculated above, and Q is the public key (ECC point).
