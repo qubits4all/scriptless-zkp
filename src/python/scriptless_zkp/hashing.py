@@ -102,6 +102,16 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
     """
     DEFAULT_HASH_ALGO: str = hashlib.sha3_256().name
 
+    # Primes 1.5 times the target field order's bit-length, for use in the Carter-Wegman universal hash construction:
+    # Larger prime (1.5x) for 256-bit field order (e.g., NIST P-256 elliptic curve w/ SHA3-256)
+    LARGER_PRIME_384_BIT: int = 0x91a3c78dbb0cb708d574b77db351f32f0929b706424c128fc2bff7ae3a21701bea783c49b251e37023c1377161235fcb
+    # Larger prime (1.5x) for 384-bit field order (e.g., NIST P-384 elliptic curve w/ SHA3-384)
+    LARGER_PRIME_576_BIT: int = 0xb2aa811fb9a94422e1cd6e00e11b1e843a415088cb23a91e36b76ac65b504f843930421fa103b51ad79022345254363dff57cc5f8f007ccaa7b2a5ede93e513f9c4aba8be4ec49fd
+    # Larger prime (1.5x) for 512-bit field order (e.g., using SHA3-512)
+    LARGER_PRIME_768_BIT: int = 0x894dafed6ff629b391acc4180fa756e9fd1b25a1874eb56bc8cef3686133a9b7e666252ea1983c9dc3bb0b021a24d5f217e7647d6569eae0e140c31da68975d854c1dc750e85ec343fe3677b9e3eb65260fde6faaa163e8a787b8e3ad63c9265
+    # Larger prime (1.5x) for 521-bit field order (e.g., NIST P-521 elliptic curve w/ SHAKE-256 XOF & 528-bit output)
+    LARGER_PRIME_792_BIT: int = 0xaffe02d07ca7fe87c5eda65f8ad33025e02a9225b2d8b52553f266a730da66bc679af67b27990b286028394027441bf155ea3d65f36e9a736f8abf9ce983d9861844978570a89bd23e48324e7313a1a858e8d84417f5baa9b8ea01dc9edb502d6941a3
+
     q: int
     p: int
     hash_algo: str
@@ -174,39 +184,78 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
             cls,
             target_field_order: int,
             domain_separation_tag: str | None = None,
+            larger_prime_p: int | None = None,
             deterministic: bool = False
     ) -> UniversalPrimeLengthHasher:
         field_order_bit_length: int = target_field_order.bit_length()
 
+        if larger_prime_p is not None:
+            if larger_prime_p.bit_length() < math.ceil(target_field_order * 1.5):
+                raise ValueError(
+                    f"Provided prime `p` must be at least 1.5 times the bit-length of the target field order: "
+                    f"{field_order_bit_length} bits."
+                )
+
+        hash_algo: str = cls.DEFAULT_HASH_ALGO
+
         match field_order_bit_length:
-            case bits if bits <= 256:
-                large_prime_p: int = number.getPrime(384)  # generate the large prime `p` with 256 * 1.5 bits
+            case bits if bits <= 256:                    # e.g., NIST P-256 elliptic curve
+                if larger_prime_p is None:
+                    # Generate a 384-bit prime (1.5 x field order) or use a constant prime for deterministic hashing.
+                    larger_prime_p: int = cls.LARGER_PRIME_384_BIT if deterministic else number.getPrime(384)
                 hash_algo: str = hashlib.sha3_256().name
-            case bits if 256 < bits <= 384:
-                large_prime_p: int = number.getPrime(576)  # generate the large prime `p` with 384 * 1.5 bits
+            case bits if 256 < bits <= 384:              # e.g., NIST P-384 elliptic curve
+                if larger_prime_p is None:
+                    # Generate a 576-bit prime (1.5 x field order) or use a constant prime for deterministic hashing.
+                    larger_prime_p: int = cls.LARGER_PRIME_576_BIT if deterministic else number.getPrime(576)
                 hash_algo: str = hashlib.sha3_384().name
-            case bits if 384 < bits <= 512:
-                large_prime_p: int = number.getPrime(768)  # generate the large prime `p` with 512 * 1.5 bits
+            case bits if 384 < bits <= 512:              # e.g., Ed448-Goldilocks elliptic curve
+                if larger_prime_p is None:
+                    # Generate a 768-bit prime (1.5 x field order) or use a constant prime for deterministic hashing.
+                    larger_prime_p: int = cls.LARGER_PRIME_768_BIT if deterministic else number.getPrime(768)
                 hash_algo: str = hashlib.sha3_512().name
-            case bits:  # bits > 512 (e.g., 521 bits for the NIST P-521 curve)
-                large_prime_size_bits: int = math.ceil(bits * 1.5)
-                large_prime_p: int = number.getPrime(large_prime_size_bits)
+            case bits if bits == 521 and deterministic:  # e.g., NIST P-521 elliptic curve
+                if larger_prime_p is None:
+                    # Use a constant 792-bit prime (1.5 x field order) for deterministic hashing.
+                    larger_prime_p: int = cls.LARGER_PRIME_792_BIT
                 hash_algo: str = hashlib.shake_256().name
                 xof_hash_len: int = (bits + 7) // 8  # equiv.: `ceil(bits / 8)` (e.g., 521 bits -> 66 bytes or 528 bits)
 
                 return cls(
                     target_field_order,
-                    large_prime_p,
+                    larger_prime_p,
                     hash_algorithm=hash_algo,
                     xof_hash_digest_length=xof_hash_len,
                     domain_separation_tag=domain_separation_tag,
                     deterministic=deterministic
                 )
+            case bits if not deterministic:  # bits > 512
+                if larger_prime_p is None:
+                    large_prime_size_bits: int = math.ceil(bits * 1.5)
+                    # Generate a larger prime (1.5 x field order)
+                    larger_prime_p: int = number.getPrime(large_prime_size_bits)
+                hash_algo: str = hashlib.shake_256().name
+                xof_hash_len: int = (bits + 7) // 8  # equiv.: `ceil(bits / 8)`
+
+                return cls(
+                    target_field_order,
+                    larger_prime_p,
+                    hash_algorithm=hash_algo,
+                    xof_hash_digest_length=xof_hash_len,
+                    domain_separation_tag=domain_separation_tag,
+                    deterministic=deterministic
+                )
+            case bits if deterministic and larger_prime_p is None:  # bits > 512 and bits != 521
+                large_prime_size_bits: int = math.ceil(bits * 1.5)
+                raise ValueError(
+                    f"Deterministic hashing for target field order with bit-length: {bits} bits requires a prime `p` be"
+                    f" provided that is: {large_prime_size_bits} bits (i.e., 1.5 times the field order's bit-length)."
+                )
 
         # For field orders with bit-length <= 512, use a cryptographic hash w/ a fixed-size hash output.
         return cls(
             target_field_order,
-            large_prime_p,
+            larger_prime_p,
             hash_algorithm=hash_algo,
             domain_separation_tag=domain_separation_tag,
             deterministic=deterministic
