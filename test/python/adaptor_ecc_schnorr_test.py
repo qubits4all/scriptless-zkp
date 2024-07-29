@@ -1,14 +1,21 @@
 import unittest
 
-from scriptless_zkp.ecc.signatures.adaptor_schnorr import AdaptorSchnorrContext, AdaptorSchnorrKeyPair, \
-    AdaptorSchnorrTweakPair, AdaptorSchnorrPreSignature, AdaptorSchnorrPublicKeys
+from scriptless_zkp.ecc.signatures.adaptor_schnorr import (
+    AdaptorSchnorrContext, AdaptorSchnorrKeyPair, AdaptorSchnorrTweakPair, AdaptorSchnorrPreSignature,
+    AdaptorSchnorrPublicKeys
+)
+from scriptless_zkp.ecc.signatures.schnorr import SchnorrPublicKey, SchnorrSignature
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 
 
 class AdaptorECCSchnorrTests(unittest.TestCase):
     context = AdaptorSchnorrContext(
         WeierstrassEllipticCurveConfig.secp256r1(),
-        AdaptorSchnorrContext.DEFAULT_DOMAIN_SEPARATOR
+        domain_separation_tag=AdaptorSchnorrContext.DEFAULT_DOMAIN_SEPARATOR
+    )
+    context_without_domain_sep = AdaptorSchnorrContext(
+        WeierstrassEllipticCurveConfig.secp256r1(),
+        domain_separation_tag=None
     )
 
     def test_adaptor_Schnorr_key_generation(self):
@@ -67,11 +74,45 @@ class AdaptorECCSchnorrTests(unittest.TestCase):
         # Verify the pre-signature via the verify_pre_signature(...) method on the public keys object.
         self.assertTrue(
             adaptor_pub_keys.verify_pre_signature(pre_sig, test_message),
-            "Pre-signature verification failed."
+            "Adaptor ECC Schnorr pre-signature verification failed."
         )
 
         # Verify the pre-signature via the verify(...) helper method on the pre-signature object.
         self.assertTrue(pre_sig.verify(adaptor_pub_keys, test_message))
+
+    def test_pre_signature_adapt(self):
+        key_pair = AdaptorSchnorrKeyPair.generate(self.context)
+        tweak_pair = AdaptorSchnorrTweakPair.generate(self.context)
+
+        test_message: bytes = b'foo'
+        pre_sig: AdaptorSchnorrPreSignature = key_pair.sign(tweak_pair.public_tweak_key, test_message)
+
+        # Adapt the pre-signature to a full signature using the private tweak key.
+        signature: SchnorrSignature = pre_sig.adapt_to_signature(tweak_pair.private_tweak)
+
+        schnorr_public_key = SchnorrPublicKey(self.context.as_schnorr_context(), key_pair.public_key)
+        # Verify the adapted full signature using the public key.
+        self.assertTrue(
+            schnorr_public_key.verify_signature(signature, test_message),
+            "ECC Schnorr signature verification failed."
+        )
+
+    def test_pre_signature_adapt_no_domain_separator(self):
+        key_pair = AdaptorSchnorrKeyPair.generate(self.context_without_domain_sep)
+        tweak_pair = AdaptorSchnorrTweakPair.generate(self.context_without_domain_sep)
+
+        test_message: bytes = b'foo'
+        pre_sig: AdaptorSchnorrPreSignature = key_pair.sign(tweak_pair.public_tweak_key, test_message)
+
+        # Adapt the pre-signature to a full signature using the private tweak key.
+        signature: SchnorrSignature = pre_sig.adapt_to_signature(tweak_pair.private_tweak)
+
+        schnorr_public_key = SchnorrPublicKey(self.context_without_domain_sep.as_schnorr_context(), key_pair.public_key)
+        # Verify the adapted full signature using the public key.
+        self.assertTrue(
+            schnorr_public_key.verify_signature(signature, test_message),
+            "ECC Schnorr signature verification failed."
+        )
 
 
 if __name__ == '__main__':

@@ -30,7 +30,7 @@ from scriptless_zkp.hashing import UniversalPrimeLengthHasher
 
 class AdaptorSchnorrContext:
     curve_config: WeierstrassEllipticCurveConfig
-    domain_separator: str
+    domain_separator: Optional[str]
     hasher: UniversalPrimeLengthHasher
 
     DEFAULT_DOMAIN_SEPARATOR: str = "AdaptorECCSchnorr"
@@ -38,7 +38,7 @@ class AdaptorSchnorrContext:
     def __init__(
             self,
             ecc_curve_config: WeierstrassEllipticCurveConfig,
-            domain_separation_tag: str = DEFAULT_DOMAIN_SEPARATOR
+            domain_separation_tag: Optional[str] = DEFAULT_DOMAIN_SEPARATOR
     ):
         self.curve_config = ecc_curve_config
         self.domain_separator = domain_separation_tag
@@ -60,7 +60,7 @@ class AdaptorSchnorrContext:
         return AdaptorSchnorrTweakPair.generate(self)
 
     def as_schnorr_context(self) -> SchnorrContext:
-        return SchnorrContext(self.curve_config, message_hash_algorithm=self.hasher.hash_algo)
+        return SchnorrContext(self.curve_config, domain_separation_tag=self.domain_separator)
 
 
 class AdaptorSchnorrKeyPair:
@@ -223,6 +223,8 @@ class AdaptorSchnorrPublicKeys:
         if nonce_derived_verification_point.is_point_at_infinity():
             return False
 
+        # Compute the pre-signature scalar-based verification EC point: `s' * G + Y`, where `s'` is the pre-signature
+        # scalar, `G` is the elliptic curve's base point, and `Y` is the public tweak point.
         presig_scalar_derived_verification_point: ECC.EccPoint = self.public_tweak + (
                 self.context.curve_config.base_point * adaptor_pre_signature.pre_signature
         )

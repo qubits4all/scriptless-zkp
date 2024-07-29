@@ -47,7 +47,10 @@ class ECCSchnorrTests(unittest.TestCase):
         signature: SchnorrSignature = key_pair.sign(test_message)
 
         public_key: SchnorrPublicKey = key_pair.public_key
-        self.assertTrue(public_key.verify_signature(signature, test_message))
+        self.assertTrue(
+            public_key.verify_signature(signature, test_message),
+            "ECC Schnorr signature verification failed."
+        )
 
 
 if __name__ == '__main__':
