@@ -60,8 +60,14 @@ def generate_random_nonce_pair(
              the provided EC base point (or the configured curve's public generator `G` if not provided).
     """
     base_point: ECC.EccPoint = ecc_base_point if ecc_base_point else curve_config.base_point
-    private_nonce: int = generate_random_nonce(curve_config, exclude_one=exclude_one)
-    nonce_point: ECC.EccPoint = base_point * private_nonce
+
+    while True:
+        private_nonce: int = generate_random_nonce(curve_config, exclude_one=exclude_one)
+        nonce_point: ECC.EccPoint = base_point * private_nonce
+
+        # Ensure the generated nonce point is not the elliptic curve group's unit (i.e., the point-at-infinity).
+        if not nonce_point.is_point_at_infinity():
+            break
 
     return private_nonce, nonce_point
 
