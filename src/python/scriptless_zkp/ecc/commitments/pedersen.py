@@ -139,7 +139,7 @@ class PedersenCommitmentContext:
 class SealedPedersenCommitment:
     curve_config: WeierstrassEllipticCurveConfig
     nums_generator: ECC.EccPoint
-    commitment: ECC.EccPoint
+    commitment_point: ECC.EccPoint
 
     def __add__(self, other) -> SealedPedersenCommitment:
         """
@@ -167,7 +167,7 @@ class SealedPedersenCommitment:
         return SealedPedersenCommitment(
             self.curve_config,
             self.nums_generator,
-            self.commitment + other.commitment  # homomorphic addition of commitments ( `C(x) + C(y) = C(x + y)` ).
+            self.commitment_point + other.commitment_point  # homomorphic addition of commitments ( `C(x) + C(y) = C(x + y)` ).
         )
 
 
@@ -175,7 +175,7 @@ class SealedPedersenCommitment:
 class RevealedPedersenCommitment:
     curve_config: WeierstrassEllipticCurveConfig
     nums_generator: ECC.EccPoint
-    commitment: ECC.EccPoint
+    commitment_point: ECC.EccPoint
     committed: int
     blinding_factor: int
 
@@ -206,7 +206,7 @@ class RevealedPedersenCommitment:
         return RevealedPedersenCommitment(
             self.curve_config,
             self.nums_generator,
-            self.commitment + other.commitment,  # homomorphic addition of commitments ( `C(x) + C(y) = C(x + y)` ).
+            self.commitment_point + other.commitment_point,  # homomorphic addition of commitments ( `C(x) + C(y) = C(x + y)` ).
             self.committed + other.committed,
             self.blinding_factor + other.blinding_factor
         )
@@ -224,4 +224,4 @@ class RevealedPedersenCommitment:
             return False
 
         # Return whether the provided commitment matches the recalculated commitment.
-        return self.commitment == reconstructed_commitment
+        return self.commitment_point == reconstructed_commitment
