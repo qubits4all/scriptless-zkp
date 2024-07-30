@@ -1,6 +1,6 @@
 [project]
 name = "scriptless_zkp"
-version = "0.3.0"
+version = "0.4.0-alpha"
 authors = [
   { name="qubits4all", email="qubits4all@users.noreply.github.com" },
 ]
@@ -28,7 +28,7 @@ Issues = "https://github.com/qubits4all/scriptless-zkp/issues"
 
 [tool.poetry]
 name = "scriptless_zkp"
-version = "0.3.0"
+version = "0.4.0-alpha"
 description = 'Scriptless-ZKP - Adaptor & multi-party signatures, zero-knowledge proofs (ZKPs) & "scriptless" scripts'
 authors = ["qubits4all <qubits4all@users.noreply.github.com>"]
 
