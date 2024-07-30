@@ -134,8 +134,6 @@ class ECCGeneratorDerivationContext:
             domain_separation_tag=self.domain_separator,
             deterministic=True  # Ensure deterministic hash output for reproducibility.
         )
-        if self.domain_separator is not None:
-            point_hasher.update(self.domain_separator.encode('utf-8'))
 
         point_hasher.update(base_point_pub_key_SEC1)
         if nonce is not None:
