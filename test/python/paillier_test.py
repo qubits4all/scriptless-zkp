@@ -19,9 +19,10 @@ from scriptless_zkp.he.paillier import PaillierKeyPair, MIN_KEY_SIZE, DEFAULT_KE
 
 class PaillierHomomorphicEncryptionTests(unittest.TestCase):
     key_size: int = MIN_KEY_SIZE
+    key_pair = PaillierKeyPair.generate(key_size_bits=key_size)
 
     def test_key_pair_generation(self):
-        key_pair = PaillierKeyPair.generate(key_size_bits=self.key_size)  # generate a Paillier key-pair w/ default key-size of 3072 bits.
+        key_pair = PaillierKeyPair.generate(key_size_bits=self.key_size)
 
         # Check if: g^λ == 1 mod n
         self.assertEqual(
@@ -39,24 +40,20 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
         )
 
     def test_encryption_validity(self):
-        key_pair = PaillierKeyPair.generate(key_size_bits=self.key_size)
-
         plaintext = 42
-        ciphertext = key_pair.public_key.encrypt(plaintext)
+        ciphertext = self.key_pair.public_key.encrypt(plaintext)
 
         # Check if the ciphertext is a valid encryption of the plaintext.
         self.assertGreater(ciphertext.encrypted, 0, "The encrypted value should be a positive integer.")
         self.assertLess(
-            ciphertext.encrypted, key_pair.public_key.n_squared, "The encrypted value should be less than n^2."
+            ciphertext.encrypted, self.key_pair.public_key.n_squared, "The encrypted value should be less than n^2."
         )
 
     def test_encryption_decryption(self):
-        key_pair = PaillierKeyPair.generate(key_size_bits=self.key_size)
-
         plaintext = 42
-        ciphertext = key_pair.public_key.encrypt(plaintext)
+        ciphertext = self.key_pair.public_key.encrypt(plaintext)
 
-        decrypted = key_pair.private_key.decrypt(ciphertext)
+        decrypted = self.key_pair.private_key.decrypt(ciphertext)
 
         self.assertEqual(plaintext, decrypted, "The decrypted value should match the original plaintext.")
 
