@@ -109,9 +109,15 @@ class PaillierPublicKey:
         while (r := number.getPrime(self.n.bit_length())) >= self.n:
             pass
 
-        encrypted: int = (
-            pow(self.g, message, self.n_squared) * pow(r, self.n, self.n_squared)
-        ) % self.n_squared
+        if self.g == self.n + 1:
+            # Apply optimization: `g^m == (1 + n*m) mod n^2`, when `g == n + 1`.
+            encrypted: int = (
+                (1 + self.n * message) * pow(r, self.n, self.n_squared)
+            ) % self.n_squared
+        else:
+            encrypted: int = (
+                pow(self.g, message, self.n_squared) * pow(r, self.n, self.n_squared)
+            ) % self.n_squared
 
         return EncryptedUnsignedInteger(encrypted, self)
 
