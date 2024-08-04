@@ -27,8 +27,6 @@ DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key s
 
 @dataclass
 class PaillierPrivateKey:
-    p: int                  # First secret prime factor of public modulus n.
-    q: int                  # Second secret prime factor of public modulus n.
     lam: int                # λ(n) = lcm(p-1, q-1) -- The Carmichael function of n.
     mu: int                 # λ(n)^-1 mod n -- The modular multiplicative inverse of λ(n) modulo n.
     _n: int | None = None
@@ -51,14 +49,39 @@ class PaillierPrivateKey:
         return self._n2
 
     def decrypt(self, ciphertext: EncryptedUnsignedInteger) -> int:
+        """
+        Decrypts an encrypted non-negative integer using the Paillier private key. Decryption of ciphertext `c` is
+        performed as:
+            Dec(sk=lam, c): `m = L(c^λ mod n^2) * μ mod n`, where `L(u) = (u - 1) / n` and `μ = λ^-1 mod n`.
+
+        The decryption function is only defined for ciphertexts in the range `[1, n^2)`.
+
+        Note:
+        :param ciphertext: The encrypted integer value to decrypt.
+        :return: The decrypted integer value.
+        """
         if ciphertext.encrypted < 0 or ciphertext.encrypted >= self.n_squared:
             raise ValueError("Ciphertext is out of range for decryption.")
 
-        # TODO: Double-check correctness of the following line.
-        return libnum.invmod(
-            pow(ciphertext.encrypted, self.lam, self.n_squared) - 1,
+        # Dec(sk=lam, c): `m = L(c^λ mod n^2) * μ mod n`, where `L(u) = (u - 1) / n` and `μ = λ^-1 mod n`
+        return self._L(
+            pow(ciphertext.encrypted, self.lam, self.n_squared),
             self.n
         ) * self.mu % self.n
+
+    # noinspection PyPep8Naming
+    @staticmethod
+    def _L(u, n) -> int:
+        """
+        Computes the formula: L(u) := (u - 1) / n
+        This formula produces an integer result for all u ∈ S_n, where S_n := {u < n^2 | u = 1 mod n}.
+        """
+        # Ensure u ∈ Z_{n^2}^* (i.e., u is a non-zero element of the multiplicative group of integers modulo n^2).
+        assert 0 < u < n ** 2, "u must be in the range [1, n^2)."
+        # Ensure that L(u, n) is well-defined (i.e., u = 1 mod n).
+        assert u % n == 1, "u must be congruent to 1 modulo n."
+
+        return (u - 1) // n
 
 
 @dataclass
@@ -76,6 +99,11 @@ class PaillierPublicKey:
         return self._n2
 
     def encrypt(self, message: int) -> EncryptedUnsignedInteger:
+        """
+        Encrypts a non-negative integer message using the Paillier public key. Encryption of message `m` is performed
+        as:
+            Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the blinding factor `r` is a random prime in `Z_{n}^*`.
+        """
         if message < 0 or message >= self.n_squared:
             raise ValueError("Message is out of range for encryption.")
 
@@ -84,7 +112,6 @@ class PaillierPublicKey:
         while (r := number.getPrime(self.n.bit_length())) >= self.n:
             pass
 
-        # TODO: Double-check correctness of the following.
         encrypted: int = (
             pow(self.g, message, self.n_squared) * pow(r, self.n, self.n_squared)
         ) % self.n_squared
@@ -111,11 +138,14 @@ class PaillierKeyPair:
         p: int = number.getPrime(prime_factor_size_bits)
         q: int = number.getPrime(prime_factor_size_bits)
         n = p * q
-        lam = (p - 1) * (q - 1)     # Note: Using phi(n) instead of λ(n) for efficiency (avoiding LCM computation).
+        lam: int = libnum.lcm(p - 1, q - 1)  # λ(n) := lcm(p-1, q-1)
         mu = libnum.invmod(lam, n)
+
+        # Choose g = n+1, a known generator in B, where B := the disjoint union of subsets B_a of Z_{n^2}^* where
+        # B_a := the set of elements of Z_{n^2}^* with order n*a.
         g = n + 1
 
-        priv_key = PaillierPrivateKey(p, q, lam, mu)
+        priv_key = PaillierPrivateKey(lam, mu)
         pub_key = PaillierPublicKey(n, g)
 
         return PaillierKeyPair(pub_key, priv_key)
