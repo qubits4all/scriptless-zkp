@@ -14,7 +14,7 @@
 import secrets
 import unittest
 
-from scriptless_zkp.he.paillier import PaillierKeyPair, MIN_KEY_SIZE, DEFAULT_KEY_SIZE
+from scriptless_zkp.he.paillier import PaillierKeyPair, MIN_KEY_SIZE
 
 
 class PaillierHomomorphicEncryptionTests(unittest.TestCase):
@@ -29,14 +29,14 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
 
         # Check if: g^λ == 1 mod n
         self.assertEqual(
-            pow(key_pair.public_key.g, key_pair.private_key.lam, key_pair.public_key.n),
+            pow(key_pair.public_key.g, key_pair.private_key.λ, key_pair.public_key.n),
             1,
             "The public key's generator `g` raised to the private key `λ(n)` should be congruent to 1 modulo `n`."
         )
 
         # Check if: g^nλ == 1 mod n^2
         self.assertEqual(
-            pow(key_pair.public_key.g, key_pair.public_key.n * key_pair.private_key.lam, key_pair.public_key.n_squared),
+            pow(key_pair.public_key.g, key_pair.public_key.n * key_pair.private_key.λ, key_pair.public_key.n2),
             1,
             "The public key's generator `g` raised to the product of the public key `n` and the private key `λ(n)`"
             " should be congruent to 1 modulo `n^2`."
@@ -48,7 +48,7 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
         # Check if the ciphertext is a valid encryption of the plaintext.
         self.assertGreater(ciphertext.encrypted, 0, "The encrypted value should be a positive integer.")
         self.assertLess(
-            ciphertext.encrypted, self.key_pair.public_key.n_squared, "The encrypted value should be less than n^2."
+            ciphertext.encrypted, self.key_pair.public_key.n2, "The encrypted value should be less than n^2."
         )
 
     def test_encryption_validity_large_message(self):
@@ -57,7 +57,7 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
         # Check if the ciphertext is a valid encryption of the plaintext.
         self.assertGreater(ciphertext.encrypted, 0, "The encrypted value should be a positive integer.")
         self.assertLess(
-            ciphertext.encrypted, self.key_pair.public_key.n_squared, "The encrypted value should be less than n^2."
+            ciphertext.encrypted, self.key_pair.public_key.n2, "The encrypted value should be less than n^2."
         )
 
     def test_encryption_decryption_small_message(self):

@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import secrets
 
 from dataclasses import dataclass
@@ -29,23 +31,62 @@ DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key s
 
 @dataclass
 class PaillierPrivateKey:
-    lam: int                # λ(n) = lcm(p-1, q-1) -- The Carmichael function of n.
-    mu: int                 # λ(n)^-1 mod n -- The modular multiplicative inverse of λ(n) modulo n.
-    n: int                  # The public modulus n = p * q, for p, q prime.
-    _n2: int | None = None
+    λ: int                # private key lambda: `λ(n) = lcm(p-1, q-1)` -- The Carmichael function of public modulus n
+    n: int                  # public modulus: `n = p * q`, for private p, q prime
+    mu: int                 # modular inverse of private key lambda: `λ(n)^-1 mod n`
+    _n2: int | None = None  # cached square `n^2` of the public modulus `n`
 
-    def __init__(self, lam: int, n: int):
-        self.lam = lam
-        self.n = n
-        self.mu = libnum.invmod(lam, n)
+    def __init__(self, private_lambda: int, public_modulus: int):
+        self.λ = private_lambda
+        self.n = public_modulus
+        # Calculate the modular inverse of the private key lambda: `λ(n)^-1 mod n`
+        self.mu = libnum.invmod(private_lambda, public_modulus)
+
+    # noinspection DuplicatedCode
+    @classmethod
+    def from_base64_encoding(cls, encoded_private_key: str) -> PaillierPrivateKey:
+        parsed_fields: list[str] = encoded_private_key.split(':')
+        if len(parsed_fields) != 2:
+            raise ValueError(
+                f"Invalid encoded Paillier private key format -- two base64-encoded fields expected"
+                f" [fields_count={len(parsed_fields)}]"
+            )
+
+        private_lambda_base64, public_modulus_base64 = parsed_fields
+
+        try:
+            private_lambda: int = number.bytes_to_long(base64.b64decode(private_lambda_base64))
+            public_modulus: int = number.bytes_to_long(base64.b64decode(public_modulus_base64))
+        except binascii.Error as b64ex:
+            raise ValueError(f"Invalid base64 encoding for Paillier private key -- exception: {b64ex}")
+        else:
+            return cls(private_lambda, public_modulus)
 
     @property
-    def n_squared(self) -> int:
+    def n2(self) -> int:
         # Lazily compute n^2 and cache the result, on first access.
         if self._n2 is None:
             self._n2 = self.n ** 2
 
         return self._n2
+
+    def private_lambda(self) -> int:
+        return self.λ
+
+    def private_lambda_inverse(self) -> int:
+        return self.mu
+
+    def public_modulus(self) -> int:
+        return self.n
+
+    def public_modulus_squared(self) -> int:
+        return self.n2
+
+    def encode_to_base64(self) -> str:
+        private_lambda_base64: str = base64.b64encode(number.long_to_bytes(self.λ)).decode('utf-8')
+        public_modulus_base64: str = base64.b64encode(number.long_to_bytes(self.n)).decode('utf-8')
+
+        return f"{private_lambda_base64}:{public_modulus_base64}"
 
     def decrypt(self, ciphertext: EncryptedUnsignedInteger) -> int:
         """
@@ -59,12 +100,12 @@ class PaillierPrivateKey:
         :param ciphertext: The encrypted integer value to decrypt.
         :return: The decrypted integer value.
         """
-        if ciphertext.encrypted < 0 or ciphertext.encrypted >= self.n_squared:
+        if ciphertext.encrypted < 0 or ciphertext.encrypted >= self.n2:
             raise ValueError("Ciphertext is out of range for decryption.")
 
         # Dec(sk=lam, c): `m = L(c^λ mod n^2) * μ mod n`, where `L(u) = (u - 1) / n` and `μ ≡ λ^-1 mod n`
         return self._L(
-            pow(ciphertext.encrypted, self.lam, self.n_squared),
+            pow(ciphertext.encrypted, self.λ, self.n2),
             self.n
         ) * self.mu % self.n
 
@@ -85,17 +126,56 @@ class PaillierPrivateKey:
 
 @dataclass
 class PaillierPublicKey:
-    n: int
-    g: int
+    n: int                  # public modulus: `n = p * q`, for private p, q prime
+    g: int                  # public generator `g ∈ B` of the set of n-th residues modulo n^2 (CR[n])
     _n2: int | None = None
 
+    def __init__(self, public_modulus: int, public_generator: int):
+        self.n = public_modulus
+        self.g = public_generator
+
+    # noinspection DuplicatedCode
+    @classmethod
+    def from_base64_encoding(cls, encoded_public_key: str) -> PaillierPublicKey:
+        parsed_fields: list[str] = encoded_public_key.split(':')
+        if len(parsed_fields) != 2:
+            raise ValueError(
+                f"Invalid encoded Paillier public key format -- two base64-encoded fields expected"
+                f" [fields_count={len(parsed_fields)}]"
+            )
+
+        public_modulus_base64, public_generator_base64 = parsed_fields
+
+        try:
+            public_modulus: int = number.bytes_to_long(base64.b64decode(public_modulus_base64))
+            public_generator: int = number.bytes_to_long(base64.b64decode(public_generator_base64))
+        except binascii.Error as b64ex:
+            raise ValueError(f"Invalid base64 encoding for Paillier public key -- exception: {b64ex}")
+        else:
+            return cls(public_modulus, public_generator)
+
     @property
-    def n_squared(self) -> int:
+    def n2(self) -> int:
         # Lazily compute n^2 and cache the result, on first access.
         if self._n2 is None:
             self._n2 = self.n ** 2
 
         return self._n2
+
+    def public_modulus(self) -> int:
+        return self.n
+
+    def public_generator(self) -> int:
+        return self.g
+
+    def public_modulus_squared(self) -> int:
+        return self.n2
+
+    def encode_to_base64(self) -> str:
+        public_modulus_base64: str = base64.b64encode(number.long_to_bytes(self.n)).decode('utf-8')
+        public_generator_base64: str = base64.b64encode(number.long_to_bytes(self.g)).decode('utf-8')
+
+        return f"{public_modulus_base64}:{public_generator_base64}"
 
     def encrypt(self, message: int) -> EncryptedUnsignedInteger:
         """
@@ -103,7 +183,7 @@ class PaillierPublicKey:
         as:
             Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the blinding factor `r` is a random prime in `Z_{n}^*`.
         """
-        if message < 0 or message >= self.n_squared:
+        if message < 0 or message >= self.n2:
             raise ValueError("Message is out of range for encryption.")
 
         # Generate a random blinding factor r in `Z_{n}^*` (i.e., r ∈ [1, n) ).
@@ -115,17 +195,16 @@ class PaillierPublicKey:
         if self.g == self.n + 1:
             # Apply optimization: `g^m == (1 + n*m) mod n^2`, when `g == n + 1`.
             encrypted: int = (
-                (1 + self.n * message) * pow(r, self.n, self.n_squared)
-            ) % self.n_squared
+                (1 + self.n * message) * pow(r, self.n, self.n2)
+            ) % self.n2
         else:
             encrypted: int = (
-                pow(self.g, message, self.n_squared) * pow(r, self.n, self.n_squared)
-            ) % self.n_squared
+                pow(self.g, message, self.n2) * pow(r, self.n, self.n2)
+            ) % self.n2
 
         return EncryptedUnsignedInteger(encrypted, self)
 
 
-# TODO: Add support for key-pair serialization/deserialization.
 @dataclass
 class PaillierKeyPair:
     public_key: PaillierPublicKey
@@ -152,8 +231,8 @@ class PaillierKeyPair:
         # Compute the private key: `λ(n) := lcm(p-1, q-1)` (i.e., the Carmichael function of n).
         lam: int = libnum.lcm(p - 1, q - 1)
 
-        # Choose `g = n + 1`, a known generator ∈ B of the set of n-th residues modulo n^2, where B := the disjoint union
-        # of subsets B_𝜶 of Z_{n^2}^*, where B_𝜶 := the set of elements of Z_{n^2}^* with order `n * 𝜶`.
+        # Choose `g = n + 1`, a known generator ∈ B of the set of n-th residues modulo n^2, where B := the disjoint
+        # union of subsets B_𝜶 of Z_{n^2}^*, where B_𝜶 := the set of elements of Z_{n^2}^* with order `n * 𝜶`.
         g = n + 1
 
         priv_key = PaillierPrivateKey(lam, n)
@@ -179,13 +258,13 @@ class EncryptedUnsignedInteger:
             raise ValueError("Homomorphic addition operands must have the same public key.")
 
         return EncryptedUnsignedInteger(
-            (self.encrypted * other_encrypted.encrypted) % self.public_key.n_squared,
+            (self.encrypted * other_encrypted.encrypted) % self.public_key.n2,
             self.public_key
         )
 
     def __mul__(self, scalar: int) -> EncryptedUnsignedInteger:
         return EncryptedUnsignedInteger(
-            pow(self.encrypted, scalar, self.public_key.n_squared),
+            pow(self.encrypted, scalar, self.public_key.n2),
             self.public_key
         )
 
