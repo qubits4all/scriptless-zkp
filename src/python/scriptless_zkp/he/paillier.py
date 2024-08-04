@@ -29,16 +29,13 @@ DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key s
 class PaillierPrivateKey:
     lam: int                # λ(n) = lcm(p-1, q-1) -- The Carmichael function of n.
     mu: int                 # λ(n)^-1 mod n -- The modular multiplicative inverse of λ(n) modulo n.
-    _n: int | None = None
+    n: int                  # The public modulus n = p * q, for p, q prime.
     _n2: int | None = None
 
-    @property
-    def n(self) -> int:
-        # Lazily compute n and cache the result, on first access.
-        if self._n is None:
-            self._n = self.p * self.q
-
-        return self._n
+    def __init__(self, lam: int, n: int):
+        self.lam = lam
+        self.n = n
+        self.mu = libnum.invmod(lam, n)
 
     @property
     def n_squared(self) -> int:
@@ -52,7 +49,7 @@ class PaillierPrivateKey:
         """
         Decrypts an encrypted non-negative integer using the Paillier private key. Decryption of ciphertext `c` is
         performed as:
-            Dec(sk=lam, c): `m = L(c^λ mod n^2) * μ mod n`, where `L(u) = (u - 1) / n` and `μ = λ^-1 mod n`.
+            Dec(sk=lam, c): `m = L(c^λ mod n^2) * μ mod n`, where `L(u) = (u - 1) / n` and `μ ≡ λ^-1 mod n`.
 
         The decryption function is only defined for ciphertexts in the range `[1, n^2)`.
 
@@ -63,7 +60,7 @@ class PaillierPrivateKey:
         if ciphertext.encrypted < 0 or ciphertext.encrypted >= self.n_squared:
             raise ValueError("Ciphertext is out of range for decryption.")
 
-        # Dec(sk=lam, c): `m = L(c^λ mod n^2) * μ mod n`, where `L(u) = (u - 1) / n` and `μ = λ^-1 mod n`
+        # Dec(sk=lam, c): `m = L(c^λ mod n^2) * μ mod n`, where `L(u) = (u - 1) / n` and `μ ≡ λ^-1 mod n`
         return self._L(
             pow(ciphertext.encrypted, self.lam, self.n_squared),
             self.n
@@ -74,7 +71,7 @@ class PaillierPrivateKey:
     def _L(u, n) -> int:
         """
         Computes the formula: L(u) := (u - 1) / n
-        This formula produces an integer result for all u ∈ S_n, where S_n := {u < n^2 | u = 1 mod n}.
+        This formula produces an integer result for all u ∈ S_n, where S_n := {u < n^2 | u ≡ 1 mod n}.
         """
         # Ensure u ∈ Z_{n^2}^* (i.e., u is a non-zero element of the multiplicative group of integers modulo n^2).
         assert 0 < u < n ** 2, "u must be in the range [1, n^2)."
@@ -107,7 +104,7 @@ class PaillierPublicKey:
         if message < 0 or message >= self.n_squared:
             raise ValueError("Message is out of range for encryption.")
 
-        # Generate a random prime r in `Z_n \ {0}`, to be used as a blinding factor.
+        # Generate a random prime r in `Z_{n}^*`, to be used as a blinding factor.
         # Note: gcd(r, n) = 1 as required since r is prime, unless r = p or r = q (i.e., where n = p * q).
         while (r := number.getPrime(self.n.bit_length())) >= self.n:
             pass
@@ -135,17 +132,22 @@ class PaillierKeyPair:
             raise ValueError(f"Paillier key-size must be at least [{MIN_KEY_SIZE}] bits.")
 
         prime_factor_size_bits: int = key_size_bits // 2
+
+        # Generate two large prime numbers, p and q, of roughly equal size.
         p: int = number.getPrime(prime_factor_size_bits)
         q: int = number.getPrime(prime_factor_size_bits)
-        n = p * q
-        lam: int = libnum.lcm(p - 1, q - 1)  # λ(n) := lcm(p-1, q-1)
-        mu = libnum.invmod(lam, n)
 
-        # Choose g = n+1, a known generator in B, where B := the disjoint union of subsets B_a of Z_{n^2}^* where
-        # B_a := the set of elements of Z_{n^2}^* with order n*a.
+        # Compute the public modulus: `n = p * q`
+        n = p * q
+
+        # Compute the private key: `λ(n) := lcm(p-1, q-1)` (i.e., the Carmichael function of n).
+        lam: int = libnum.lcm(p - 1, q - 1)
+
+        # Choose `g = n + 1`, a known generator ∈ B of the set of n-th residues modulo n^2, where B := the disjoint union
+        # of subsets B_𝜶 of Z_{n^2}^*, where B_𝜶 := the set of elements of Z_{n^2}^* with order `n * 𝜶`.
         g = n + 1
 
-        priv_key = PaillierPrivateKey(lam, mu)
+        priv_key = PaillierPrivateKey(lam, n)
         pub_key = PaillierPublicKey(n, g)
 
         return PaillierKeyPair(pub_key, priv_key)
