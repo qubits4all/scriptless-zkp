@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import secrets
+
 from dataclasses import dataclass
 
 from Cryptodome.Util import number
@@ -104,9 +106,10 @@ class PaillierPublicKey:
         if message < 0 or message >= self.n_squared:
             raise ValueError("Message is out of range for encryption.")
 
-        # Generate a random prime r in `Z_{n}^*`, to be used as a blinding factor.
-        # Note: gcd(r, n) = 1 as required since r is prime, unless r = p or r = q (i.e., where n = p * q).
-        while (r := number.getPrime(self.n.bit_length())) >= self.n:
+        # Generate a random blinding factor r in `Z_{n}^*` (i.e., r ∈ [1, n) ).
+        # Note: gcd(r, n) = 1 is required, however a random r ∈ `Z_{n}^*` meets this requirement unless r == p or
+        #   r == q (which is highly unlikely to occur).
+        while (r := secrets.randbelow(self.n)) == 0:
             pass
 
         if self.g == self.n + 1:
