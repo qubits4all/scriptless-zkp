@@ -103,7 +103,7 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
             ciphertext.encrypted, self.test_key_pair.public_key.n2, "The encrypted value should be less than n^2."
         )
 
-    def test_encryption_decryption_small_value(self):
+    def test_encryption_and_decryption_small_value(self):
         # Print the base64-encoded public and private keys.
         print(
             f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
@@ -116,7 +116,7 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
 
         self.assertEqual(self.small_test_msg1, decrypted, "The decrypted value should match the original plaintext.")
 
-    def test_encryption_decryption_large_value(self):
+    def test_encryption_and_decryption_large_value(self):
         # Print the base64-encoded public and private keys.
         print(
             f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
@@ -247,6 +247,18 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
             product_decrypted,
             "The decrypted homomorphic scalar product of a Paillier ciphertext and scalar multiplier should match"
             " the product of the original plaintext integer and scalar."
+        )
+
+    def test_ciphertext_obfuscation_and_decryption(self):
+        ciphertext: EncryptedUnsignedInteger = self.test_key_pair.public_key.encrypt(self.large_test_msg1)
+        obfuscated_ciphertext: EncryptedUnsignedInteger = ciphertext.obfuscate()
+
+        decrypted: int = self.test_key_pair.private_key.decrypt(obfuscated_ciphertext)
+
+        self.assertEqual(
+            self.large_test_msg1,
+            decrypted,
+            "The decrypted obfuscated ciphertext should match the original plaintext non-negative integer."
         )
 
 
