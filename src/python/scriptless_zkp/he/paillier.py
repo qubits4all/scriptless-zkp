@@ -31,16 +31,35 @@ DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key s
 
 @dataclass
 class PaillierPrivateKey:
-    λ: int                # private key lambda: `λ(n) = lcm(p-1, q-1)` -- The Carmichael function of public modulus n
+    λ: int                  # private key lambda: `λ(n) = lcm(p-1, q-1)` -- The Carmichael function of public modulus n
     n: int                  # public modulus: `n = p * q`, for private p, q prime
     mu: int                 # modular inverse of private key lambda: `λ(n)^-1 mod n`
     _n2: int | None = None  # cached square `n^2` of the public modulus `n`
 
     def __init__(self, private_lambda: int, public_modulus: int):
+        if public_modulus.bit_length() < MIN_KEY_SIZE:
+            raise ValueError(f"Invalid Paillier private key -- public modulus must be at least [{MIN_KEY_SIZE}] bits.")
+
         self.λ = private_lambda
         self.n = public_modulus
         # Calculate the modular inverse of the private key lambda: `λ(n)^-1 mod n`
         self.mu = libnum.invmod(private_lambda, public_modulus)
+
+    def __str__(self) -> str:
+        """
+        Returns a base64-based encoding of this Paillier private key, which uses the following format:
+            `{private_lambda_base64}:{public_modulus_base64}`
+        """
+        return self.encode_to_base64()
+
+    def __repr__(self) -> str:
+        """
+        Returns a string representation of the Paillier private key (base64-encoded), in the format:
+            `PaillierPrivateKey(λ, n)='{private_lambda_base64}:{public_modulus_base64}'`
+        """
+        return (
+            f"PaillierPrivateKey(λ, n)='{self.encode_to_base64()}'"
+        )
 
     # noinspection DuplicatedCode
     @classmethod
@@ -55,8 +74,12 @@ class PaillierPrivateKey:
         private_lambda_base64, public_modulus_base64 = parsed_fields
 
         try:
-            private_lambda: int = number.bytes_to_long(base64.b64decode(private_lambda_base64))
-            public_modulus: int = number.bytes_to_long(base64.b64decode(public_modulus_base64))
+            private_lambda: int = number.bytes_to_long(
+                base64.b64decode(private_lambda_base64, validate=True)
+            )
+            public_modulus: int = number.bytes_to_long(
+                base64.b64decode(public_modulus_base64, validate=True)
+            )
         except binascii.Error as b64ex:
             raise ValueError(f"Invalid base64 encoding for Paillier private key -- exception: {b64ex}")
         else:
@@ -83,6 +106,10 @@ class PaillierPrivateKey:
         return self.n2
 
     def encode_to_base64(self) -> str:
+        """
+        Returns a base64-based encoding of this Paillier private key, which uses the following format:
+            `{private_lambda_base64}:{public_modulus_base64}`
+        """
         private_lambda_base64: str = base64.b64encode(number.long_to_bytes(self.λ)).decode('utf-8')
         public_modulus_base64: str = base64.b64encode(number.long_to_bytes(self.n)).decode('utf-8')
 
@@ -130,9 +157,23 @@ class PaillierPublicKey:
     g: int                  # public generator `g ∈ B` of the set of n-th residues modulo n^2 (CR[n])
     _n2: int | None = None
 
-    def __init__(self, public_modulus: int, public_generator: int):
+    def __init__(self, public_modulus: int, public_generator: int, validate: bool = False):
+        if validate:
+            self._validate(public_modulus, public_generator)
+
         self.n = public_modulus
         self.g = public_generator
+
+    @staticmethod
+    def _validate(public_modulus: int, public_generator: int) -> None:
+        if public_modulus.bit_length() < MIN_KEY_SIZE:
+            raise ValueError(f"Invalid Paillier public key -- public modulus must be at least [{MIN_KEY_SIZE}] bits.")
+
+        # Require the generator `g` to be equal to `n + 1`, as this impl. uses this specific generator as optimization.
+        if public_generator != public_modulus + 1:
+            raise ValueError(
+                "Invalid Paillier public key -- the public generator 'g' must be equal to: n + 1"
+            )
 
     # noinspection DuplicatedCode
     @classmethod
@@ -147,12 +188,45 @@ class PaillierPublicKey:
         public_modulus_base64, public_generator_base64 = parsed_fields
 
         try:
-            public_modulus: int = number.bytes_to_long(base64.b64decode(public_modulus_base64))
-            public_generator: int = number.bytes_to_long(base64.b64decode(public_generator_base64))
+            public_modulus: int = number.bytes_to_long(
+                base64.b64decode(public_modulus_base64, validate=True)
+            )
+            public_generator: int = number.bytes_to_long(
+                base64.b64decode(public_generator_base64, validate=True)
+            )
         except binascii.Error as b64ex:
             raise ValueError(f"Invalid base64 encoding for Paillier public key -- exception: {b64ex}")
         else:
-            return cls(public_modulus, public_generator)
+            return cls(public_modulus, public_generator, validate=True)
+
+    def validate_public_key(self) -> None:
+        """
+        Determines if this Paillier public key is valid, raising a `ValueError` if not. Validations performed include
+        verifying whether its public modulus meets this module's minimum key-size requirement (i.e., 2048-bits), and
+        verifying whether its public generator is valid (i.e., whether it's a valid generator of the group of n-th
+        residues modulo n^2) and is a value supported by this module's Paillier implementation.
+
+        Note: This implementation uses a specific generator `g` (i.e., `g = n + 1`, where `n` is the public modulus) as
+        an optimization for Paillier encryption and decryption, as defined as an option in the original Paillier
+        cryptosystem.
+        """
+        self._validate(self.n, self.g)
+
+    def __str__(self) -> str:
+        """
+        Returns a base64-based encoding of this Paillier public key, which uses the following format:
+            `{public_modulus_base64}:{public_generator_base64}`
+        """
+        return self.encode_to_base64()
+
+    def __repr__(self) -> str:
+        """
+        Returns a string representation of the Paillier public key (base64-encoded), in the format:
+            `PaillierPublicKey(n, g)='{public_modulus_base64}:{public_generator_base64}'`
+        """
+        return (
+            f"PaillierPublicKey(n, g)='{self.encode_to_base64()}'"
+        )
 
     @property
     def n2(self) -> int:
@@ -172,6 +246,10 @@ class PaillierPublicKey:
         return self.n2
 
     def encode_to_base64(self) -> str:
+        """
+        Returns a base64-based encoding of this Paillier public key, which uses the following format:
+            `{public_modulus_base64}:{public_generator_base64}`
+        """
         public_modulus_base64: str = base64.b64encode(number.long_to_bytes(self.n)).decode('utf-8')
         public_generator_base64: str = base64.b64encode(number.long_to_bytes(self.g)).decode('utf-8')
 
@@ -211,9 +289,36 @@ class PaillierKeyPair:
     public_key: PaillierPublicKey
     private_key: PaillierPrivateKey
 
-    def __init__(self, public_key: PaillierPublicKey, private_key: PaillierPrivateKey):
+    def __init__(self, public_key: PaillierPublicKey, private_key: PaillierPrivateKey, validate: bool = False):
+        if validate:
+            self._validate(public_key, private_key)
+
         self.public_key = public_key
         self.private_key = private_key
+
+    @staticmethod
+    def _validate(public_key: PaillierPublicKey, private_key: PaillierPrivateKey) -> None:
+        if private_key.n != public_key.n:
+            raise ValueError("Paillier public and private keys must have the same public modulus.")
+
+        public_key.validate_public_key()
+
+        # Verify: `g^λ == 1 mod n`, where g is the public generator, n := p * q is the public modulus
+        #   (for primes p and q), and λ := λ(n) = lcm(p-1, q-1) is the private key.
+        if pow(public_key.g, private_key.λ, public_key.n) != 1:
+            raise ValueError(
+                "Invalid Paillier public/private key pair -- The public key's generator `g` raised to the private key"
+                " `λ(n)` should be congruent to 1 modulo `n` (i.e., g^λ == 1 mod n)."
+            )
+
+        # Verify: `g^nλ == 1 mod n^2`, where g is the public generator, n := p * q is the public modulus
+        #   (for primes p and q), and λ := λ(n) = lcm(p-1, q-1) is the private key.
+        if pow(public_key.g, public_key.n * private_key.λ, public_key.n2) != 1:
+            raise ValueError(
+                "Invalid Paillier public/private key pair -- The public key's generator `g` raised to the product of"
+                " the public key `n` and the private key `λ(n)` should be congruent to 1 modulo `n^2`"
+                " (i.e., `g^nλ == 1 mod n^2`)."
+            )
 
     @classmethod
     def generate(cls, key_size_bits: int = DEFAULT_KEY_SIZE) -> PaillierKeyPair:
@@ -240,6 +345,16 @@ class PaillierKeyPair:
         pub_key = PaillierPublicKey(n, g)
 
         return PaillierKeyPair(pub_key, priv_key)
+
+    def validate_key_pair(self) -> None:
+        """
+        Verifies whether a Paillier key-pair is valid, raising a `ValueError` if not. Validations of the public key's
+        modulus and generator are performed, in addition to two sophisticated tests of the private key's validity,
+        which involve modular congruence identities due to Carmichael's theorem.
+
+        These validations are especially useful for verifying a Paillier key-pair's validity following deserialization.
+        """
+        self._validate(self.public_key, self.private_key)
 
     def encode_private_key(self) -> str:
         return self.private_key.encode_to_base64()
