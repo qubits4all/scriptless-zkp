@@ -181,7 +181,8 @@ class PaillierPublicKey:
         """
         Encrypts a non-negative integer message using the Paillier public key. Encryption of message `m` is performed
         as:
-            Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the blinding factor `r` is a random prime in `Z_{n}^*`.
+            Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the base `r`, of the blinding factor `r^n`, is a random prime
+        in `Z_{n}^*` (i.e., r ∈ [1, n) ).
         """
         if message < 0 or message >= self.n2:
             raise ValueError("Message is out of range for encryption.")
@@ -262,32 +263,107 @@ class EncryptedUnsignedInteger:
     def __add__(self, other_encrypted: EncryptedUnsignedInteger) -> EncryptedUnsignedInteger:
         """
         Homomorphic addition of two Paillier encrypted integers, using the left-addition operator
-        (i.e., `c3 = c1 + c2`, where `c1`, `c2`, and `c3` are Paillier ciphertexts).
+        (i.e., `c3 := Enc(p1 + p2) = Enc(p1) * Enc(p2) mod n^2`, where `p1` and `p2` plaintext non-negative integers,
+        and `c3` is a Paillier ciphertext).
+
+        Usage: `EncryptedUnsignedInteger + EncryptedUnsignedInteger`
+        """
+        return self.add(other_encrypted)
+
+    def __mul__(self, scalar: int) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic scalar multiplication of an encrypted integer by a plaintext "scalar" value, using the left-multiply
+        operator.
+
+        (i.e., `c2 := Enc(p1 * s) = Enc(p1)^s mod n^2`, where `p1` is a plaintext non-negative integer encrypted as this
+        ciphertext, `s` is the provided plaintext non-negative integer "scalar" multiplier, and `c2` is the resulting
+        Paillier ciphertext encrypting the plaintext product: `p1 * s`.)
+
+        Usage: `EncryptedUnsignedInteger * scalar_integer`
+
+        Note: This method is called when the Paillier ciphertext is on the left-hand side of the multiplication
+        operator.
+        """
+        return self.multiply(scalar)
+
+    def __rmul__(self, scalar: int) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic scalar multiplication of an encrypted integer by a plaintext "scalar" value, using the
+        right-multiply operator.
+
+        (i.e., `c2 := Enc(s * p1) = Enc(p1)^s mod n^2`, where `p1` is a plaintext non-negative integer encrypted as this
+        ciphertext, `s` is the provided plaintext non-negative integer "scalar" multiplier, and `c2` is the resulting
+        Paillier ciphertext encrypting the plaintext product: `s * p1`.)
+
+        Usage: `scalar_integer * EncryptedUnsignedInteger`
+
+        Note: This method is called when the Paillier ciphertext is on the right-hand side of the multiplication
+        operator.
+        """
+        return self.__mul__(scalar)
+
+    def add(self, other_encrypted: EncryptedUnsignedInteger) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic addition of two Paillier encrypted integers (i.e., `c3 := Enc(p1 + p2) = Enc(p1) * Enc(p2) mod n^2`,
+        where `p1` and `p2` plaintext non-negative integers, and `c3` is a Paillier ciphertext).
         """
         if self.public_key != other_encrypted.public_key:
-            raise ValueError("Homomorphic addition operands must have the same public key.")
+            raise ValueError("Homomorphic addition operands must have the same Paillier public key.")
 
         return EncryptedUnsignedInteger(
             (self.encrypted * other_encrypted.encrypted) % self.public_key.n2,
             self.public_key
         )
 
-    def __mul__(self, scalar: int) -> EncryptedUnsignedInteger:
+    def multiply(self, scalar: int) -> EncryptedUnsignedInteger:
         """
-        Homomorphic scalar multiplication of an encrypted integer by a scalar value, using the left-multiply operator
-        (i.e., `c2 = c1 * s`, where `s` is a plaintext integer "scalar", and `c1` & `c2` are Paillier ciphertexts).
+        Homomorphic scalar multiplication of an encrypted integer by a plaintext "scalar" value.
+
+        (i.e., `c2 := Enc(p1 * s) = Enc(p1)^s mod n^2`, where `p1` is a plaintext non-negative integer encrypted as this
+        ciphertext, `s` is the provided plaintext non-negative integer "scalar" multiplier, and `c2` is the resulting
+        Paillier ciphertext encrypting the plaintext product: `p1 * s`).
         """
+        # Ensure that the scalar is a non-negative integer, as Paillier encryption only natively supports non-negative
+        # integer plaintexts.
+        if scalar < 0:
+            raise ValueError(
+                "The 'scalar' multiplier used in Paillier homomorphic scalar multiplication must be a non-negative"
+                " integer."
+            )
+
         return EncryptedUnsignedInteger(
             pow(self.encrypted, scalar, self.public_key.n2),
             self.public_key
         )
 
-    def __rmul__(self, scalar: int) -> EncryptedUnsignedInteger:
-        """
-        Homomorphic scalar multiplication of an encrypted integer by a scalar value, using the right-multiply operator
-        (i.e., `c2 = s * c1`, where `s` is a plaintext integer "scalar", and `c1` & `c2` are Paillier ciphertexts).
-        """
-        return self.__mul__(scalar)
-
     def decrypt(self, private_key: PaillierPrivateKey) -> int:
         return private_key.decrypt(self)
+
+    def obfuscate(self) -> EncryptedUnsignedInteger:
+        """
+        Obfuscates (re-blinds) this Paillier ciphertext's encrypted non-negative integer, by multiplying it by a new
+        random blinding factor (`r^n`, where `r` ∈ [1, n) ), which doesn't affect the encrypted plaintext due to its
+        cancellation during decryption, but makes the resulting ciphertext indistinguishable from other ciphertexts
+        (i.e., `c' = c * r^n mod n^2`).
+
+        This operation is useful for preserving privacy in multi-party computations involving homomorphic operations.
+        Following any homomorphic operation or sequence of homomorphic operations, prior to sharing the resulting
+        ciphertext(s) with a 3rd party, it is recommended to obfuscate the produced ciphertext(s) first.
+
+        Note: Homomorphic "scalar" multiplication by small integers (e.g., 32-bit integers) can otherwise leave the
+        "scalar" multiplier vulnerable to discovery by a 3rd party, via brute-force search of the "scalar" space, when
+        the original ciphertext and product of the homomorphic "scalar" multiplication are shared with a 3rd party.
+        (i.e., An adversary can then calculate the homomorphic "scalar" product, of the original ciphertext and each
+        possible scalar in such smaller scalar spaces, and compare the resulting ciphertexts against the ciphertext
+        scalar product that was shared, to determine the scalar multiplier that was used in the original homomorphic
+        "scalar" multiplication.)
+        """
+        # Generate a random blinding factor base `r` in `Z_{n}^*` (i.e., r ∈ [1, n) ).
+        while (blinding_factor_base := secrets.randbelow(self.public_key.n)) == 0:
+            pass
+
+        # Obfuscate the ciphertext by multiplying it by a blinding factor `r^n` (i.e., `c' = c * r^n mod n^2`).
+        return EncryptedUnsignedInteger(
+            self.encrypted * pow(blinding_factor_base, self.public_key.n, self.public_key.n2) % self.public_key.n2,
+            self.public_key
+        )
