@@ -253,12 +253,39 @@ class EncryptedUnsignedInteger:
     """
     EncryptedUnsignedInteger represents an unsigned integer value encrypted using the Paillier cryptosystem.
     """
-    encrypted: int
-    public_key: PaillierPublicKey
+    encrypted: int                 # encrypted ciphertext (an integer `c` ∈ [1, n^2), where `n` is the public modulus)
+    public_key: PaillierPublicKey  # public key used to produce this ciphertext (required for homomorphic operations)
 
     def __init__(self, encrypted: int, public_key: PaillierPublicKey):
+        if encrypted < 1 or encrypted >= public_key.n2:
+            raise ValueError(
+                f"Invalid Paillier ciphertext -- valid ciphertexts 'c' are integers satisfying: 1 < c < n^2, where"
+                f" n^2 is the square of the public key's modulus."
+            )
+
         self.encrypted = encrypted
         self.public_key = public_key
+
+    @classmethod
+    def from_base64_encoding(cls, ciphertext_base64: str, public_key: PaillierPublicKey) -> EncryptedUnsignedInteger:
+        try:
+            ciphertext: int = number.bytes_to_long(
+                base64.b64decode(ciphertext_base64, validate=True)
+            )
+        except binascii.Error as b64ex:
+            raise ValueError(f"Invalid base64 encoding for Paillier ciphertext -- exception: {b64ex}")
+        else:
+            return cls(ciphertext, public_key)
+
+    def __str__(self) -> str:
+        """Returns a base64-based encoding of this Paillier ciphertext."""
+        return self.encode_to_base64()
+
+    def __repr__(self) -> str:
+        return (
+            f"EncryptedUnsignedInteger(ciphertext_base64='{self.encode_to_base64()}',"
+            f" public_key='{self.public_key.encode_to_base64()}')"
+        )
 
     def __add__(self, other_encrypted: EncryptedUnsignedInteger) -> EncryptedUnsignedInteger:
         """
@@ -302,6 +329,12 @@ class EncryptedUnsignedInteger:
         """
         return self.__mul__(scalar)
 
+    def decrypt(self, private_key: PaillierPrivateKey) -> int:
+        return private_key.decrypt(self)
+
+    def encode_to_base64(self) -> str:
+        return base64.b64encode(number.long_to_bytes(self.encrypted)).decode('utf-8')
+
     def add(self, other_encrypted: EncryptedUnsignedInteger) -> EncryptedUnsignedInteger:
         """
         Homomorphic addition of two Paillier encrypted integers (i.e., `c3 := Enc(p1 + p2) = Enc(p1) * Enc(p2) mod n^2`,
@@ -315,13 +348,41 @@ class EncryptedUnsignedInteger:
             self.public_key
         )
 
+    def add_and_obfuscate(self, other_encrypted: EncryptedUnsignedInteger) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic addition of two Paillier encrypted integers, followed by ciphertext obfuscation (re-blinding). This
+        combined operation is useful for preserving privacy in secure multi-party computation (MPC) protocols involving
+        homomorphic operations, as it re-blinds the resulting homomorphic sum with a random blinding factor
+        (`r^n`, where `r` ∈ [1, n) ), which doesn't affect the encrypted plaintext due to its cancellation during
+        decryption, but makes the resulting ciphertext indistinguishable from other ciphertexts.
+
+        (i.e., `c3' := Enc'(p1 + p2) = Enc(p1) * Enc(p2) * r^n mod n^2`, where `p1` and `p2` are plaintext non-negative
+        integers encrypted as this and the `other_encrypted` ciphertexts, respectively, and `c3'` is the resulting
+        homomorphic sum, a Paillier ciphertext encrypting the plaintext sum: `p1 + p2`).
+        """
+        if self.public_key != other_encrypted.public_key:
+            raise ValueError("Homomorphic addition operands must have the same Paillier public key.")
+
+        # Generate a random blinding factor base `r` in `Z_{n}^*` (i.e., r ∈ [1, n) ).
+        while (blinding_factor_base := secrets.randbelow(self.public_key.n)) == 0:
+            pass
+
+        return EncryptedUnsignedInteger(
+            (
+                self.encrypted * other_encrypted.encrypted * pow(
+                    blinding_factor_base, self.public_key.n, self.public_key.n2
+                )
+            ) % self.public_key.n2,
+            self.public_key
+        )
+
     def multiply(self, scalar: int) -> EncryptedUnsignedInteger:
         """
         Homomorphic scalar multiplication of an encrypted integer by a plaintext "scalar" value.
 
         (i.e., `c2 := Enc(p1 * s) = Enc(p1)^s mod n^2`, where `p1` is a plaintext non-negative integer encrypted as this
         ciphertext, `s` is the provided plaintext non-negative integer "scalar" multiplier, and `c2` is the resulting
-        Paillier ciphertext encrypting the plaintext product: `p1 * s`).
+        homomorphic scalar product, a Paillier ciphertext encrypting the plaintext product: `p1 * s`.)
         """
         # Ensure that the scalar is a non-negative integer, as Paillier encryption only natively supports non-negative
         # integer plaintexts.
@@ -336,8 +397,41 @@ class EncryptedUnsignedInteger:
             self.public_key
         )
 
-    def decrypt(self, private_key: PaillierPrivateKey) -> int:
-        return private_key.decrypt(self)
+    def multiply_and_obfuscate(self, scalar: int) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic scalar multiplication of an encrypted non-negative integer by a plaintext non-negative integer
+        "scalar", followed by ciphertext obfuscation (re-blinding). This combined operation is useful for preserving
+        privacy in secure multi-party computation (MPC) protocols involving homomorphic operations, as is re-blinds the
+        resulting ciphertext product with a random blinding factor (`r^n`, where `r` ∈ [1, n) ), which doesn't affect
+        the encrypted plaintext due to its cancellation during decryption, but makes the resulting ciphertext
+        indistinguishable from other ciphertexts.
+
+        (i.e., `c2' := Enc'(p1 * s) = Enc(p1)^s * r^n mod n^2`, where `p1` is a plaintext non-negative integer encrypted
+        as this ciphertext, `s` is the provided plaintext non-negative integer "scalar" multiplier, and `c2` is the
+        resulting homomorphic scalar product, a Paillier ciphertext encrypting the plaintext product: `p1 * s`).
+        """
+        # Ensure that the scalar is a non-negative integer, as Paillier encryption only natively supports non-negative
+        # integer plaintexts.
+        if scalar < 0:
+            raise ValueError(
+                "The 'scalar' multiplier used in Paillier homomorphic scalar multiplication must be a non-negative"
+                " integer."
+            )
+
+        # Generate a random blinding factor base `r` in `Z_{n}^*` (i.e., r ∈ [1, n) ).
+        while (blinding_factor_base := secrets.randbelow(self.public_key.n)) == 0:
+            pass
+
+        return EncryptedUnsignedInteger(
+            (
+                pow(
+                    self.encrypted, scalar, self.public_key.n2
+                ) * pow(
+                    blinding_factor_base, self.public_key.n, self.public_key.n2
+                )
+            ) % self.public_key.n2,
+            self.public_key
+        )
 
     def obfuscate(self) -> EncryptedUnsignedInteger:
         """
