@@ -221,7 +221,7 @@ class PaillierKeyPair:
 
         prime_factor_size_bits: int = key_size_bits // 2
 
-        # Generate two large prime numbers, p and q, of roughly equal size.
+        # Generate two large primes: p and q, of roughly equal size (with each prime being half the key size in bits).
         p: int = number.getPrime(prime_factor_size_bits)
         q: int = number.getPrime(prime_factor_size_bits)
 
@@ -229,16 +229,22 @@ class PaillierKeyPair:
         n = p * q
 
         # Compute the private key: `λ(n) := lcm(p-1, q-1)` (i.e., the Carmichael function of n).
-        lam: int = libnum.lcm(p - 1, q - 1)
+        private_lambda: int = libnum.lcm(p - 1, q - 1)
 
         # Choose `g = n + 1`, a known generator ∈ B of the set of n-th residues modulo n^2, where B := the disjoint
         # union of subsets B_𝜶 of Z_{n^2}^*, where B_𝜶 := the set of elements of Z_{n^2}^* with order `n * 𝜶`.
         g = n + 1
 
-        priv_key = PaillierPrivateKey(lam, n)
+        priv_key = PaillierPrivateKey(private_lambda, n)
         pub_key = PaillierPublicKey(n, g)
 
         return PaillierKeyPair(pub_key, priv_key)
+
+    def encode_private_key(self) -> str:
+        return self.private_key.encode_to_base64()
+
+    def encode_public_key(self) -> str:
+        return self.public_key.encode_to_base64()
 
 
 @dataclass
@@ -254,6 +260,10 @@ class EncryptedUnsignedInteger:
         self.public_key = public_key
 
     def __add__(self, other_encrypted: EncryptedUnsignedInteger) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic addition of two Paillier encrypted integers, using the left-addition operator
+        (i.e., `c3 = c1 + c2`, where `c1`, `c2`, and `c3` are Paillier ciphertexts).
+        """
         if self.public_key != other_encrypted.public_key:
             raise ValueError("Homomorphic addition operands must have the same public key.")
 
@@ -263,10 +273,21 @@ class EncryptedUnsignedInteger:
         )
 
     def __mul__(self, scalar: int) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic scalar multiplication of an encrypted integer by a scalar value, using the left-multiply operator
+        (i.e., `c2 = c1 * s`, where `s` is a plaintext integer "scalar", and `c1` & `c2` are Paillier ciphertexts).
+        """
         return EncryptedUnsignedInteger(
             pow(self.encrypted, scalar, self.public_key.n2),
             self.public_key
         )
+
+    def __rmul__(self, scalar: int) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic scalar multiplication of an encrypted integer by a scalar value, using the right-multiply operator
+        (i.e., `c2 = s * c1`, where `s` is a plaintext integer "scalar", and `c1` & `c2` are Paillier ciphertexts).
+        """
+        return self.__mul__(scalar)
 
     def decrypt(self, private_key: PaillierPrivateKey) -> int:
         return private_key.decrypt(self)

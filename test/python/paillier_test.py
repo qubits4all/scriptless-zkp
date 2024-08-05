@@ -37,6 +37,18 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
     while (large_test_msg3 := secrets.randbelow(half_modulus)) == 0:
         pass
 
+    # Small test scalar for testing homomorphic scalar multiplication:
+    small_test_scalar: int = 13
+
+    # Generate random integers less than the square root of the public key's modulus, for testing homomorphic scalar
+    # multiplication:
+    # Calculate an approx. of sqrt(n) -- half key bit-size limit
+    sqrt_modulus: int = test_key_pair.public_key.n << (test_key_size // 2)
+    while (large_test_msg4 := secrets.randbelow(sqrt_modulus)) == 0:
+        pass
+    while (large_test_scalar := secrets.randbelow(sqrt_modulus)) == 0:
+        pass
+
     def test_key_pair_generation(self):
         key_pair = PaillierKeyPair.generate(key_size_bits=self.test_key_size)
 
@@ -61,7 +73,7 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
             " should be congruent to 1 modulo `n^2`."
         )
 
-    def test_encryption_validity_small_message(self):
+    def test_encryption_validity_small_value(self):
         # Print the base64-encoded public and private keys.
         print(
             f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
@@ -76,7 +88,7 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
             ciphertext.encrypted, self.test_key_pair.public_key.n2, "The encrypted value should be less than n^2."
         )
 
-    def test_encryption_validity_large_message(self):
+    def test_encryption_validity_large_value(self):
         # Print the base64-encoded public and private keys.
         print(
             f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
@@ -91,7 +103,7 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
             ciphertext.encrypted, self.test_key_pair.public_key.n2, "The encrypted value should be less than n^2."
         )
 
-    def test_encryption_decryption_small_message(self):
+    def test_encryption_decryption_small_value(self):
         # Print the base64-encoded public and private keys.
         print(
             f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
@@ -104,7 +116,7 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
 
         self.assertEqual(self.small_test_msg1, decrypted, "The decrypted value should match the original plaintext.")
 
-    def test_encryption_decryption_large_message(self):
+    def test_encryption_decryption_large_value(self):
         # Print the base64-encoded public and private keys.
         print(
             f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
@@ -117,7 +129,7 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
 
         self.assertEqual(self.large_test_msg1, decrypted, "The decrypted value should match the original plaintext.")
 
-    def test_homomorphic_addition_of_small_messages(self):
+    def test_homomorphic_addition_of_small_values(self):
         # Print the base64-encoded public and private keys.
         print(
             f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
@@ -149,7 +161,7 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
             " integers."
         )
 
-    def test_homomorphic_addition_of_large_messages(self):
+    def test_homomorphic_addition_of_large_values(self):
         # Print the base64-encoded public and private keys.
         print(
             f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
@@ -179,6 +191,62 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
             sum_decrypted,
             "The decrypted homomorphic sum of Paillier ciphertexts should match the sum of the original plaintext"
             " integers."
+        )
+
+    def test_homomorphic_scalar_multiplication_mul_small_values(self):
+        # Print the base64-encoded public and private keys.
+        print(
+            f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
+            f"Private Key (λ, n): {self.test_key_pair.private_key.encode_to_base64()}"
+        )
+
+        ciphertext: EncryptedUnsignedInteger = self.test_key_pair.public_key.encrypt(self.small_test_msg1)
+
+        # Calculate homomorphic scalar product of ciphertext and scalar multiplier, using left multiply operator.
+        product_ciphertext: EncryptedUnsignedInteger = ciphertext * self.small_test_scalar
+
+        product_decrypted: int = self.test_key_pair.private_key.decrypt(product_ciphertext)
+
+        print(
+            f"\nOriginal plaintext integer (p * s):"
+            f" {self.small_test_msg1} * {self.small_test_scalar} ="
+            f" {self.small_test_msg1 * self.small_test_scalar}"
+        )
+        print(f"Decrypted homomorphic product of ciphertexts: Dec( Enc(p * s) := Enc(p)^s ): {product_decrypted}")
+
+        self.assertEqual(
+            self.small_test_msg1 * self.small_test_scalar,
+            product_decrypted,
+            "The decrypted homomorphic scalar product of a Paillier ciphertext and scalar multiplier should match"
+            " the product of the original plaintext integer and scalar."
+        )
+
+    def test_homomorphic_scalar_multiplication_rmul_small_values(self):
+        # Print the base64-encoded public and private keys.
+        print(
+            f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
+            f"Private Key (λ, n): {self.test_key_pair.private_key.encode_to_base64()}"
+        )
+
+        ciphertext: EncryptedUnsignedInteger = self.test_key_pair.public_key.encrypt(self.small_test_msg1)
+
+        # Calculate homomorphic scalar product of ciphertext and scalar multiplier, using right multiply operator.
+        product_ciphertext: EncryptedUnsignedInteger = self.small_test_scalar * ciphertext
+
+        product_decrypted: int = self.test_key_pair.private_key.decrypt(product_ciphertext)
+
+        print(
+            f"\nOriginal plaintext integer (p * s):"
+            f" {self.small_test_msg1} * {self.small_test_scalar} ="
+            f" {self.small_test_msg1 * self.small_test_scalar}"
+        )
+        print(f"Decrypted homomorphic product of ciphertexts: Dec( Enc(p * s) := Enc(p)^s ): {product_decrypted}")
+
+        self.assertEqual(
+            self.small_test_msg1 * self.small_test_scalar,
+            product_decrypted,
+            "The decrypted homomorphic scalar product of a Paillier ciphertext and scalar multiplier should match"
+            " the product of the original plaintext integer and scalar."
         )
 
 
