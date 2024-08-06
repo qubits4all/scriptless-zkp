@@ -29,6 +29,14 @@ MIN_KEY_SIZE: int = 2048      # Note: Min. key-size for use in Y. Lindell's 2-Pa
 DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key size of 3072 bits.
 
 
+def gen_random_positive_integer(upper_limit_exclusive: int) -> int:
+    """
+    Generates a random positive integer in the range [1, upper_limit_exclusive), using Python's `secrets` module.
+    :param upper_limit_exclusive: The upper limit (exclusive) of the random integer to generate.
+    """
+    return secrets.randbelow(upper_limit_exclusive - 1) + 1
+
+
 @dataclass
 class PaillierPrivateKey:
     λ: int                  # private key lambda: `λ(n) = lcm(p-1, q-1)` -- The Carmichael function of public modulus n
@@ -37,13 +45,31 @@ class PaillierPrivateKey:
     _n2: int | None = None  # cached square `n^2` of the public modulus `n`
 
     def __init__(self, private_lambda: int, public_modulus: int):
-        if public_modulus.bit_length() < MIN_KEY_SIZE:
-            raise ValueError(f"Invalid Paillier private key -- public modulus must be at least [{MIN_KEY_SIZE}] bits.")
+        self._validate(public_modulus)
 
         self.λ = private_lambda
         self.n = public_modulus
         # Calculate the modular inverse of the private key lambda: `λ(n)^-1 mod n`
         self.mu = libnum.invmod(private_lambda, public_modulus)
+
+    @staticmethod
+    def _validate(public_modulus: int) -> None:
+        # Verify the Paillier private key's public modulus is at least 2047 bits (i.e., MIN_KEY_SIZE - 1).
+        # Note: The modulus `n : = p*q`, where `p` and `q` are prime, can be between 2047 & 2048 bits, due to the
+        #   1024-bit primes `p` & `q` allowed values lying inside the range: [2^(1023) + 1, 2^(1024) - 1]
+        if public_modulus.bit_length() < (MIN_KEY_SIZE - 1):
+            raise ValueError(
+                f"Invalid Paillier private key -- public modulus must be at least [{MIN_KEY_SIZE - 1}] bits."
+            )
+
+    def validate_private_key(self) -> None:
+        """
+        Determines if this Paillier private key is valid, raising a `ValueError` if not. Validations performed include
+        verifying whether its public modulus meets this module's minimum key-size requirement (i.e., 2047-bits).
+
+        :raises ValueError: If this Paillier private key is invalid.
+        """
+        return self._validate(self.n)
 
     def __str__(self) -> str:
         """
@@ -110,8 +136,13 @@ class PaillierPrivateKey:
         Returns a base64-based encoding of this Paillier private key, which uses the following format:
             `{private_lambda_base64}:{public_modulus_base64}`
         """
-        private_lambda_base64: str = base64.b64encode(number.long_to_bytes(self.λ)).decode('utf-8')
-        public_modulus_base64: str = base64.b64encode(number.long_to_bytes(self.n)).decode('utf-8')
+        private_lambda_base64: str = base64.b64encode(
+            number.long_to_bytes(self.λ)
+        ).decode('utf-8')
+
+        public_modulus_base64: str = base64.b64encode(
+            number.long_to_bytes(self.n)
+        ).decode('utf-8')
 
         return f"{private_lambda_base64}:{public_modulus_base64}"
 
@@ -127,7 +158,8 @@ class PaillierPrivateKey:
         :param ciphertext: The encrypted integer value to decrypt.
         :return: The decrypted integer value.
         """
-        if ciphertext.encrypted < 0 or ciphertext.encrypted >= self.n2:
+        # Ensure the ciphertext `c` is in the range `[1, n^2)` (i.e., `c` ∈ `Z_{n^2}*`), as required for decryption.
+        if ciphertext.encrypted < 1 or ciphertext.encrypted >= self.n2:
             raise ValueError("Ciphertext is out of range for decryption.")
 
         # Dec(sk=lam, c): `m = L(c^λ mod n^2) * μ mod n`, where `L(u) = (u - 1) / n` and `μ ≡ λ^-1 mod n`
@@ -142,10 +174,11 @@ class PaillierPrivateKey:
         """
         Computes the formula: L(u) := (u - 1) / n
         This formula produces an integer result for all u ∈ S_n, where S_n := {u < n^2 | u ≡ 1 mod n}.
+        :raises AssertionError: If the input `u` is not in the range [1, n^2) or is not congruent to 1 modulo `n`.
         """
         # Ensure u ∈ Z_{n^2}^* (i.e., u is a non-zero element of the multiplicative group of integers modulo n^2).
         assert 0 < u < n ** 2, "u must be in the range [1, n^2)."
-        # Ensure that L(u, n) is well-defined (i.e., u = 1 mod n).
+        # Ensure that L(u, n) is well-defined (i.e., u ≡ 1 mod n).
         assert u % n == 1, "u must be congruent to 1 modulo n."
 
         return (u - 1) // n
@@ -153,8 +186,8 @@ class PaillierPrivateKey:
 
 @dataclass
 class PaillierPublicKey:
-    n: int                  # public modulus: `n = p * q`, for private p, q prime
-    g: int                  # public generator `g ∈ B` of the set of n-th residues modulo n^2 (CR[n])
+    n: int                 # public modulus: `n = p * q`, for private p, q prime
+    g: int                 # public generator `g ∈ B` of the set of n-th residues modulo n^2 (i.e., `g` generates CR[n])
     _n2: int | None = None
 
     def __init__(self, public_modulus: int, public_generator: int, validate: bool = False):
@@ -166,13 +199,19 @@ class PaillierPublicKey:
 
     @staticmethod
     def _validate(public_modulus: int, public_generator: int) -> None:
-        if public_modulus.bit_length() < MIN_KEY_SIZE:
-            raise ValueError(f"Invalid Paillier public key -- public modulus must be at least [{MIN_KEY_SIZE}] bits.")
+        # Verify the Paillier public key's modulus is at least 2047 bits (i.e., MIN_KEY_SIZE - 1).
+        # Note: The modulus `n : = p*q`, where `p` and `q` are prime, can be between 2047 & 2048 bits, due to the
+        #   1024-bit primes `p` & `q` allowed values lying inside the range: [2^(1023) + 1, 2^(1024) - 1]
+        if public_modulus.bit_length() < (MIN_KEY_SIZE - 1):
+            raise ValueError(
+                f"Invalid Paillier public key -- public modulus must be at least [{MIN_KEY_SIZE - 1}] bits."
+            )
 
-        # Require the generator `g` to be equal to `n + 1`, as this impl. uses this specific generator as optimization.
+        # Require generator `g` to equal `n + 1`, as this impl. uses this specific generator as an optimization.
         if public_generator != public_modulus + 1:
             raise ValueError(
-                "Invalid Paillier public key -- the public generator 'g' must be equal to: n + 1"
+                "Invalid Paillier public key -- the public generator 'g' must be equal to: n + 1, where 'n' is the"
+                " public modulus."
             )
 
     # noinspection DuplicatedCode
@@ -202,13 +241,15 @@ class PaillierPublicKey:
     def validate_public_key(self) -> None:
         """
         Determines if this Paillier public key is valid, raising a `ValueError` if not. Validations performed include
-        verifying whether its public modulus meets this module's minimum key-size requirement (i.e., 2048-bits), and
+        verifying whether its public modulus meets this module's minimum key-size requirement (i.e., 2047-bits), and
         verifying whether its public generator is valid (i.e., whether it's a valid generator of the group of n-th
         residues modulo n^2) and is a value supported by this module's Paillier implementation.
 
         Note: This implementation uses a specific generator `g` (i.e., `g = n + 1`, where `n` is the public modulus) as
         an optimization for Paillier encryption and decryption, as defined as an option in the original Paillier
         cryptosystem.
+
+        :raises ValueError: If this Paillier public key is invalid.
         """
         self._validate(self.n, self.g)
 
@@ -262,23 +303,25 @@ class PaillierPublicKey:
             Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the base `r`, of the blinding factor `r^n`, is a random prime
         in `Z_{n}^*` (i.e., r ∈ [1, n) ).
         """
-        if message < 0 or message >= self.n2:
+        # Ensure the message `m` is a non-negative integer in the range [0, n) (i.e., `m` ∈ `Z_{n}`, the (additive)
+        # group of integers modulo `n`).
+        if message < 0 or message >= self.n:
             raise ValueError("Message is out of range for encryption.")
 
-        # Generate a random blinding factor r in `Z_{n}^*` (i.e., r ∈ [1, n) ).
+        # Generate a random blinding factor (base) `r` in the range [1, n) (i.e., r ∈ `Z_{n}^*`, the multiplicative
+        # group of integers modulo `n`).
         # Note: gcd(r, n) = 1 is required, however a random r ∈ `Z_{n}^*` meets this requirement unless r == p or
-        #   r == q (which is highly unlikely to occur).
-        while (r := secrets.randbelow(self.n)) == 0:
-            pass
+        #   r == q, where n := p*q (which is highly unlikely to occur).
+        blinding_factor_base: int = gen_random_positive_integer(self.n)
 
         if self.g == self.n + 1:
-            # Apply optimization: `g^m == (1 + n*m) mod n^2`, when `g == n + 1`.
+            # Apply optimization: `g^m ≡ (1 + n*m) mod n^2`, when `g == n + 1`.
             encrypted: int = (
-                (1 + self.n * message) * pow(r, self.n, self.n2)
+                (1 + self.n * message) * pow(blinding_factor_base, self.n, self.n2)
             ) % self.n2
         else:
             encrypted: int = (
-                pow(self.g, message, self.n2) * pow(r, self.n, self.n2)
+                pow(self.g, message, self.n2) * pow(blinding_factor_base, self.n, self.n2)
             ) % self.n2
 
         return EncryptedUnsignedInteger(encrypted, self)
@@ -353,6 +396,8 @@ class PaillierKeyPair:
         which involve modular congruence identities due to Carmichael's theorem.
 
         These validations are especially useful for verifying a Paillier key-pair's validity following deserialization.
+
+        :raises ValueError: If this Paillier key-pair is invalid.
         """
         self._validate(self.public_key, self.private_key)
 
@@ -448,7 +493,9 @@ class EncryptedUnsignedInteger:
         return private_key.decrypt(self)
 
     def encode_to_base64(self) -> str:
-        return base64.b64encode(number.long_to_bytes(self.encrypted)).decode('utf-8')
+        return base64.b64encode(
+            number.long_to_bytes(self.encrypted)
+        ).decode('utf-8')
 
     def add(self, other_encrypted: EncryptedUnsignedInteger) -> EncryptedUnsignedInteger:
         """
@@ -479,8 +526,7 @@ class EncryptedUnsignedInteger:
             raise ValueError("Homomorphic addition operands must have the same Paillier public key.")
 
         # Generate a random blinding factor base `r` in `Z_{n}^*` (i.e., r ∈ [1, n) ).
-        while (blinding_factor_base := secrets.randbelow(self.public_key.n)) == 0:
-            pass
+        blinding_factor_base: int = gen_random_positive_integer(self.public_key.n)
 
         return EncryptedUnsignedInteger(
             (
@@ -534,8 +580,7 @@ class EncryptedUnsignedInteger:
             )
 
         # Generate a random blinding factor base `r` in `Z_{n}^*` (i.e., r ∈ [1, n) ).
-        while (blinding_factor_base := secrets.randbelow(self.public_key.n)) == 0:
-            pass
+        blinding_factor_base: int = gen_random_positive_integer(self.public_key.n)
 
         return EncryptedUnsignedInteger(
             (
@@ -568,8 +613,7 @@ class EncryptedUnsignedInteger:
         "scalar" multiplication.)
         """
         # Generate a random blinding factor base `r` in `Z_{n}^*` (i.e., r ∈ [1, n) ).
-        while (blinding_factor_base := secrets.randbelow(self.public_key.n)) == 0:
-            pass
+        blinding_factor_base: int = gen_random_positive_integer(self.public_key.n)
 
         # Obfuscate the ciphertext by multiplying it by a blinding factor `r^n` (i.e., `c' = c * r^n mod n^2`).
         return EncryptedUnsignedInteger(
