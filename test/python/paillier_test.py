@@ -11,6 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ###############################################################################
+
 import unittest
 
 from scriptless_zkp.he.paillier import (
@@ -192,6 +193,33 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
             " integers."
         )
 
+    def test_homomorphic_addition_of_scalar_and_ciphertext(self):
+        # Print the base64-encoded public and private keys.
+        print(
+            f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
+            f"Private Key (λ, n): {self.test_key_pair.private_key.encode_to_base64()}"
+        )
+
+        ciphertext: EncryptedUnsignedInteger = self.test_key_pair.public_key.encrypt(self.large_test_msg1)
+
+        # Calculate homomorphic sum of ciphertext and scalar, using right-add operator.
+        sum_ciphertext: EncryptedUnsignedInteger = self.small_test_scalar + ciphertext
+
+        sum_decrypted: int = self.test_key_pair.private_key.decrypt(sum_ciphertext)
+
+        plaintext_sum: int = self.small_test_scalar + self.large_test_msg1
+        print(
+            f"\nOriginal plaintext integer (s + p): {self.small_test_scalar} + {self.large_test_msg1} = {plaintext_sum}"
+        )
+        print(f"Decrypted homomorphic sum of ciphertexts: Dec( Enc(s + p) := Enc(s) * Enc(p) ): {sum_decrypted}")
+
+        self.assertEqual(
+            self.large_test_msg1 + self.small_test_scalar,
+            sum_decrypted,
+            "The decrypted homomorphic sum of a Paillier ciphertext and scalar should match the sum of the"
+            " original plaintext integer and scalar."
+        )
+
     def test_homomorphic_scalar_multiplication_mul_small_values(self):
         # Print the base64-encoded public and private keys.
         print(
@@ -296,6 +324,35 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
 
         # Add the encrypted ciphertexts together, using Paillier homomorphic addition w/ obfuscation (re-blinding).
         obfuscated_sum: EncryptedUnsignedInteger = ciphertext1.add_and_obfuscate(ciphertext2)
+
+        # Decrypt this homomorphic sum of ciphertexts.
+        sum_decrypted: int = self.test_key_pair.private_key.decrypt(obfuscated_sum)
+
+        plaintext_sum: int = self.large_test_msg2 + self.large_test_msg3
+        print(
+            f"\nOriginal plaintext integers (p1 + p2):"
+            f" {self.large_test_msg2} + {self.large_test_msg3} ="
+            f" {plaintext_sum}"
+        )
+        print(
+            f"Decrypted obfuscated homomorphic sum of ciphertexts:"
+            f" Dec( Enc'(p1 + p2) := Enc(p1) * Enc(p2) * r^n mod n^2 ): {sum_decrypted}"
+        )
+
+        # Check if the decrypted homomorphic sum of ciphertexts equals the sum of the original plaintext integers,
+        # modulo `n` (the public key's modulus).
+        self.assertEqual(
+            self.large_test_msg2 + self.large_test_msg3,
+            sum_decrypted,
+            "The decrypted obfuscated homomorphic sum of Paillier ciphertexts should match the sum of the"
+            " original plaintext integers."
+        )
+
+    def test_homomorphic_add_and_obfuscate_with_scalar(self):
+        ciphertext: EncryptedUnsignedInteger = self.test_key_pair.public_key.encrypt(self.large_test_msg2)
+
+        # Add the encrypted ciphertexts together, using Paillier homomorphic addition w/ obfuscation (re-blinding).
+        obfuscated_sum: EncryptedUnsignedInteger = ciphertext.add_and_obfuscate(self.large_test_msg3)
 
         # Decrypt this homomorphic sum of ciphertexts.
         sum_decrypted: int = self.test_key_pair.private_key.decrypt(obfuscated_sum)
