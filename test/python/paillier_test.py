@@ -15,8 +15,9 @@
 import unittest
 
 from scriptless_zkp.he.paillier import (
-    PaillierKeyPair, MIN_KEY_SIZE, EncryptedUnsignedInteger, gen_random_positive_integer
+    PaillierKeyPair, MIN_KEY_SIZE, EncryptedUnsignedInteger
 )
+from scriptless_zkp.utils import random_positive_integer
 
 
 class PaillierHomomorphicEncryptionTests(unittest.TestCase):
@@ -29,12 +30,12 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
     small_test_msg2: int = 1337
 
     # Generate a full-size random integer, for testing encryption and decryption:
-    large_test_msg1: int = gen_random_positive_integer(test_key_pair.public_key.n)
+    large_test_msg1: int = random_positive_integer(test_key_pair.public_key.n)
 
     # Generate random integers half the size of the public key's modulus, for testing homomorphic addition:
     half_modulus: int = test_key_pair.public_key.n // 2
-    large_test_msg2: int = gen_random_positive_integer(half_modulus)
-    large_test_msg3: int = gen_random_positive_integer(half_modulus)
+    large_test_msg2: int = random_positive_integer(half_modulus)
+    large_test_msg3: int = random_positive_integer(half_modulus)
 
     # Small test scalar for testing homomorphic scalar multiplication:
     small_test_scalar: int = 13
@@ -43,8 +44,8 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
     # multiplication:
     # Calculate an approx. of sqrt(n) -- half key bit-size limit
     sqrt_modulus: int = test_key_pair.public_key.n >> (test_key_size // 2)
-    large_test_msg4: int = gen_random_positive_integer(sqrt_modulus)
-    large_test_scalar: int = gen_random_positive_integer(sqrt_modulus)
+    large_test_msg4: int = random_positive_integer(sqrt_modulus)
+    large_test_scalar: int = random_positive_integer(sqrt_modulus)
 
     def test_key_pair_generation(self):
         key_pair = PaillierKeyPair.generate(key_size_bits=self.test_key_size)

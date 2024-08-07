@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-import secrets
 
 from dataclasses import dataclass
 
@@ -24,17 +23,10 @@ from Cryptodome.Util import number
 
 import libnum
 
+from scriptless_zkp import utils
 
 MIN_KEY_SIZE: int = 2048      # Note: Min. key-size for use in Y. Lindell's 2-Party ECDSA protocol w/ 256-bit ECC keys.
 DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key size of 3072 bits.
-
-
-def gen_random_positive_integer(upper_limit_exclusive: int) -> int:
-    """
-    Generates a random positive integer in the range [1, upper_limit_exclusive), using Python's `secrets` module.
-    :param upper_limit_exclusive: The upper limit (exclusive) of the random integer to generate.
-    """
-    return secrets.randbelow(upper_limit_exclusive - 1) + 1
 
 
 @dataclass
@@ -312,10 +304,10 @@ class PaillierPublicKey:
         # group of integers modulo `n`).
         # Note: gcd(r, n) = 1 is required, however a random r ∈ `Z_{n}^*` meets this requirement unless r == p or
         #   r == q, where n := p*q (which is highly unlikely to occur).
-        blinding_factor_base: int = gen_random_positive_integer(self.n)
+        blinding_factor_base: int = utils.random_positive_integer(self.n)
 
         if self.g == self.n + 1:
-            # Apply optimization: `g^m ≡ (1 + n*m) mod n^2`, when `g == n + 1`.
+            # Use optimization: `g^m ≡ (1 + n*m) mod n^2`, when `g == n + 1`.
             encrypted: int = (
                 (1 + self.n * message) * pow(blinding_factor_base, self.n, self.n2)
             ) % self.n2
@@ -371,8 +363,8 @@ class PaillierKeyPair:
         prime_factor_size_bits: int = key_size_bits // 2
 
         # Generate two large primes: p and q, of roughly equal size (with each prime being half the key size in bits).
-        p: int = number.getPrime(prime_factor_size_bits)
-        q: int = number.getPrime(prime_factor_size_bits)
+        p: int = utils.random_prime_of_size(prime_factor_size_bits)
+        q: int = utils.random_prime_of_size(prime_factor_size_bits)
 
         # Compute the public modulus: `n = p * q`
         n = p * q
@@ -516,8 +508,9 @@ class EncryptedUnsignedInteger:
 
     def add(self, other: EncryptedUnsignedInteger | int) -> EncryptedUnsignedInteger:
         """
-        Homomorphic addition of two Paillier encrypted integers (i.e., `c3 := Enc(p1 + p2) = Enc(p1) * Enc(p2) mod n^2`,
-        where `p1` and `p2` plaintext non-negative integers, and `c3` is a Paillier ciphertext).
+        Homomorphic addition of two Paillier encrypted non-negative integers
+        (i.e., `c3 := Enc(p1 + p2) = Enc(p1) * Enc(p2) mod n^2`, where `p1` and `p2` plaintext non-negative integers,
+        and `c3` is a Paillier ciphertext).
 
         Alternatively, if passed a non-negative integer scalar, it performs homomorphic addition of an encryption of the
         provided scalar with this ciphertext (i.e., `c2 := Enc(p1 + s) = Enc(p1) * Enc(s) mod n^2`, where `p1` is the
@@ -526,26 +519,57 @@ class EncryptedUnsignedInteger:
         `p1 + s`).
         """
         if type(other) is int:
-            other_encrypted: EncryptedUnsignedInteger = self.public_key.encrypt(other)
+            return self._add_scalar(other)
         elif isinstance(other, EncryptedUnsignedInteger):
-            if self.public_key != other.public_key:
-                raise ValueError("Homomorphic addition operands must have the same Paillier public key.")
-
-            other_encrypted: EncryptedUnsignedInteger = other
+            return self._add_ciphertexts(other)
         else:
             raise ValueError("Homomorphic addition operands must be of type EncryptedUnsignedInteger or int.")
 
+    def _add_ciphertexts(self, other: EncryptedUnsignedInteger) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic addition of two Paillier non-negative encrypted integers, using the left-addition operator
+        (i.e., `c3 := Enc(p1 + p2) = Enc(p1) * Enc(p2) mod n^2`, where `p1` and `p2` plaintext non-negative integers,
+        and `c3` is a Paillier ciphertext).
+        """
+        if self.public_key != other.public_key:
+            raise ValueError("Homomorphic addition operands must have the same Paillier public key.")
+
         return EncryptedUnsignedInteger(
-            (self.encrypted * other_encrypted.encrypted) % self.public_key.n2,
+            (self.encrypted * other.encrypted) % self.public_key.n2,
             self.public_key
         )
 
+    def _add_scalar(self, scalar: int) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic addition of an encrypted non-negative integer with a plaintext non-negative integer scalar, using
+        the right-addition operator (i.e., `c2 := Enc(p1 + s) = Enc(p1) * g^s mod n^2`, where `p1` is the original
+        plaintext non-negative integer encrypted as this ciphertext, `s` is the provided plaintext non-negative integer
+        scalar, and `c2` is the resulting Paillier ciphertext encrypting the plaintext sum: `p1 + s`).
+        """
+        if scalar < 0 or scalar >= self.public_key.n:
+            raise ValueError("Scalar integer must be a non-negative integer in the range [0, n).")
+
+        if self.public_key.g == self.public_key.n + 1:
+            # Homomorphic addition of scalar without re-blinding: `c2 := Enc(p + s) = Enc(p) * (1 + n*s) mod n^2`,
+            # using the optimization: `g^s ≡ (1 + n)^s ≡ (1 + n*s) mod n^2`, when `g == n + 1`.
+            return EncryptedUnsignedInteger(
+                (self.encrypted * (1 + self.public_key.n * scalar)) % self.public_key.n2,
+                self.public_key
+            )
+        else:
+            # Homomorphic addition of scalar without re-blinding: `c2 := Enc(p + s) = Enc(p) * g^s mod n^2`
+            return EncryptedUnsignedInteger(
+                (self.encrypted * pow(self.public_key.g, scalar, self.public_key.n2)) % self.public_key.n2,
+                self.public_key
+            )
+
     def add_and_obfuscate(self, other: EncryptedUnsignedInteger | int) -> EncryptedUnsignedInteger:
         """
-        Homomorphic addition of two Paillier encrypted integers, followed by ciphertext obfuscation (re-blinding)
-        (i.e., `c3' := Enc'(p1 + p2) = Enc(p1) * Enc(p2) * r^n mod n^2`, where `p1` and `p2` are plaintext non-negative
-        integers encrypted as this and the `other_encrypted` ciphertexts, respectively, and `c3'` is the resulting
-        re-blinded (obfuscated) homomorphic sum, a Paillier ciphertext encrypting the plaintext sum: `p1 + p2`).
+        Homomorphic addition of two Paillier encrypted non-negative integers, followed by ciphertext obfuscation
+        (re-blinding) (i.e., `c3' := Enc'(p1 + p2) = Enc(p1) * Enc(p2) * r^n mod n^2`), where `p1` and `p2` are
+        plaintext non-negative integers encrypted as this and the `other_encrypted` ciphertexts, respectively, and `c3'`
+        is the resulting re-blinded (obfuscated) homomorphic sum, a Paillier ciphertext encrypting the plaintext sum:
+        `p1 + p2`.
 
         Alternatively, if passed a non-negative integer scalar, it performs homomorphic addition of an encryption of the
         provided scalar with this ciphertext (i.e., `c2' := Enc'(p1 + s) = Enc(p1) * Enc(s) mod n^2`, where `p1` is the
@@ -558,26 +582,66 @@ class EncryptedUnsignedInteger:
         (`r^n`, where `r` ∈ [1, n) ), which doesn't affect the encrypted plaintext due to its cancellation during
         decryption, but makes the resulting ciphertext indistinguishable from other ciphertexts.
         """
+        if type(other) is int:
+            return self._add_scalar_and_reblind(other)
+        elif isinstance(other, EncryptedUnsignedInteger):
+            return self._add_ciphertexts_and_reblind(other)
+        else:
+            raise ValueError("Homomorphic addition operands must be of type EncryptedUnsignedInteger or int.")
+
+    def _add_ciphertexts_and_reblind(self, other: EncryptedUnsignedInteger) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic addition of two Paillier encrypted non-negative integers, followed by ciphertext re-blinding
+        (i.e., `c3' := Enc'(p1 + p2) = Enc(p1) * Enc(p2) * r^n mod n^2`), where `p1` and `p2` are plaintext non-negative
+        integers encrypted as this and the `other` ciphertexts, respectively, and `c3'` is the resulting re-blinded
+        (obfuscated) homomorphic sum, a Paillier ciphertext encrypting the plaintext sum: `p1 + p2`.
+        """
+        if self.public_key != other.public_key:
+            raise ValueError("Homomorphic addition operands must have the same Paillier public key.")
+
         # Generate a random re-blinding factor base `r` in `Z_{n}^*` (i.e., approx. r ∈ [1, n) ).
-        blinding_factor_base: int = gen_random_positive_integer(self.public_key.n)
+        blinding_factor_base: int = utils.random_positive_integer(self.public_key.n)
 
         # Calculate the re-blinding factor `r^n` (i.e., `r^n mod n^2`).
         blinding_factor: int = pow(blinding_factor_base, self.public_key.n, self.public_key.n2)
 
-        if type(other) is int:
-            other_encrypted: EncryptedUnsignedInteger = self.public_key.encrypt(other)
-        elif isinstance(other, EncryptedUnsignedInteger):
-            if self.public_key != other.public_key:
-                raise ValueError("Homomorphic addition operands must have the same Paillier public key.")
-
-            other_encrypted: EncryptedUnsignedInteger = other
-        else:
-            raise ValueError("Homomorphic addition operands must be of type EncryptedUnsignedInteger or int.")
-
         return EncryptedUnsignedInteger(
-            (self.encrypted * other_encrypted.encrypted * blinding_factor) % self.public_key.n2,
+            (self.encrypted * other.encrypted * blinding_factor) % self.public_key.n2,
             self.public_key
         )
+
+    def _add_scalar_and_reblind(self, scalar: int) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic addition of an encrypted non-negative integer with a plaintext non-negative integer scalar, followed
+        by ciphertext re-blinding (i.e., `c2' := Enc'(p1 + s) = Enc(p1) * g^s * r^n = Enc(p1) * Enc(s) mod n^2`), where
+        `p1` is the original plaintext non-negative integer encrypted as this ciphertext, `s` is the provided plaintext
+        non-negative integer scalar, and `c2'` is the resulting re-blinded homomorphic sum, a Paillier ciphertext
+        encrypting the plaintext sum: `p1 + s`.
+        """
+        if scalar < 0 or scalar >= self.public_key.n:
+            raise ValueError("Scalar integer must be a non-negative integer in the range [0, n).")
+
+        # Generate a random re-blinding factor base `r` in `Z_{n}^*` (i.e., approx. r ∈ [1, n) ).
+        blinding_factor_base: int = utils.random_positive_integer(self.public_key.n)
+
+        # Calculate the re-blinding factor `r^n` (i.e., `r^n mod n^2`).
+        blinding_factor: int = pow(blinding_factor_base, self.public_key.n, self.public_key.n2)
+
+        if self.public_key.g == self.public_key.n + 1:
+            # Use optimization: `g^s ≡ (1 + n)^s ≡ (1 + n*s) mod n^2`, when `g == n + 1`.
+            return EncryptedUnsignedInteger(
+                (
+                    self.encrypted * (1 + self.public_key.n * scalar) * blinding_factor
+                ) % self.public_key.n2,
+                self.public_key
+            )
+        else:
+            return EncryptedUnsignedInteger(
+                (
+                    self.encrypted * pow(self.public_key.g, scalar, self.public_key.n2) * blinding_factor
+                ) % self.public_key.n2,
+                self.public_key
+            )
 
     def multiply(self, scalar: int) -> EncryptedUnsignedInteger:
         """
@@ -622,7 +686,7 @@ class EncryptedUnsignedInteger:
             )
 
         # Generate a random blinding factor base `r` in `Z_{n}^*` (i.e., approx. r ∈ [1, n) ).
-        blinding_factor_base: int = gen_random_positive_integer(self.public_key.n)
+        blinding_factor_base: int = utils.random_positive_integer(self.public_key.n)
 
         return EncryptedUnsignedInteger(
             (
@@ -655,7 +719,7 @@ class EncryptedUnsignedInteger:
         "scalar" multiplication.)
         """
         # Generate a random blinding factor base `r` in `Z_{n}^*` (i.e., approx. r ∈ [1, n) ).
-        blinding_factor_base: int = gen_random_positive_integer(self.public_key.n)
+        blinding_factor_base: int = utils.random_positive_integer(self.public_key.n)
 
         # Obfuscate the ciphertext by multiplying it by a blinding factor `r^n` (i.e., `c' = c * r^n mod n^2`).
         return EncryptedUnsignedInteger(
