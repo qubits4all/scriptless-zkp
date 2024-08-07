@@ -189,12 +189,15 @@ def is_quartic_nonresidue(a: int, prime_modulus: int) -> bool:
     return quartic_residue_symbol(a, prime_modulus) == -1
 
 
-def mod_inverse(a: int, prime_modulus: int) -> int:
+def mod_inverse(a: int, modulus: int) -> int:
     """
-    Computes the modular inverse of the integer `a` modulo the odd prime `prime_modulus`. This function calculates the
-    solution to the equation `a * x == 1 mod p`, where `==` represents congruence and `p` is the prime modulus.
+    Computes the modular inverse of the integer `a` modulo `modulus`, if it exists; raising an exception otherwise.
+    This function calculates the solution to the equation `a * x == 1 mod n`, where `==` represents congruence and `n`
+    is the modulus, which may be prime or composite.
     :param a: an integer for which the modular inverse will be computed.
-    :param prime_modulus: an odd prime modulus for the modular inverse computation.
-    :return: the modular inverse of `a` modulo `prime_modulus`.
+    :param modulus: a modulus for the modular inverse computation, which may be prime or composite.
+    :return: the modular inverse of `a` modulo `modulus`.
+    :raises ValueError: if the modular inverse of `a` modulo `modulus` does not exist, which can occur for composite
+            moduli when `a` is not coprime to the modulus.
     """
-    return number.inverse(a, prime_modulus)
+    return number.inverse(a, modulus)

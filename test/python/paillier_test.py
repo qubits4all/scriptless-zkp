@@ -17,6 +17,7 @@ import unittest
 from scriptless_zkp.he.paillier import (
     PaillierKeyPair, MIN_KEY_SIZE, EncryptedUnsignedInteger
 )
+from scriptless_zkp.number_theory import mod_inverse
 from scriptless_zkp.utils import random_positive_integer
 
 
@@ -409,7 +410,7 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
         )
 
         # Invert the homomorphic addition, using the obfuscated sum and the inverse of the second ciphertext:
-        inv_ciphertext2_encrypted: int = pow(ciphertext2.encrypted, -1, self.test_key_pair.public_key.n2)
+        inv_ciphertext2_encrypted: int = mod_inverse(ciphertext2.encrypted, self.test_key_pair.public_key.n2)
         inv_ciphertext2 = EncryptedUnsignedInteger(inv_ciphertext2_encrypted, self.test_key_pair.public_key)
         ciphertext_difference: EncryptedUnsignedInteger = obfuscated_sum + inv_ciphertext2
 
@@ -522,7 +523,7 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
         #   multiplier cannot be recovered by an adversary via brute-force, even if this scalar multiplier is small
         #   (e.g., a 32-bit integer), given the original ciphertext and obfuscated homomorphic product ciphertext.
         exponent_modulus: int = self.test_key_pair.public_key.n
-        scalar_inv: int = pow(self.large_test_scalar, -1, exponent_modulus)
+        scalar_inv: int = mod_inverse(self.large_test_scalar, exponent_modulus)
 
         # Invert the scalar multiplication, using the scalar's modular multiplicative inverse modulo λ(n^2) = λ(n) * n.
         obfuscated_quotient: EncryptedUnsignedInteger = obfuscated_product.multiply(scalar_inv)
