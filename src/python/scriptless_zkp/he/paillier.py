@@ -143,16 +143,17 @@ class PaillierPrivateKey:
         Decrypts an encrypted non-negative integer using the Paillier private key. Decryption of ciphertext `c` is
         performed as:
             Dec(sk=lam, c): `m = L(c^λ mod n^2) * μ mod n`, where `L(u) = (u - 1) / n` and `μ ≡ λ^-1 mod n`.
-
-        The decryption function is only defined for ciphertexts in the range `[1, n^2)`.
-
-        Note:
-        :param ciphertext: The encrypted integer value to decrypt.
-        :return: The decrypted integer value.
+        :param ciphertext: The encrypted non-negative integer value to be decrypted, which must be in the range
+               `[1, n^2)` to be a valid Paillier ciphertext.
+        :return: The decrypted non-negative integer value.
+        :raises ValueError: If the ciphertext is out of range for decryption (i.e., if it lies outside of: `[1, n^2)` ).
         """
         # Ensure the ciphertext `c` is in the range `[1, n^2)` (i.e., `c` ∈ `Z_{n^2}*`), as required for decryption.
         if ciphertext.encrypted < 1 or ciphertext.encrypted >= self.n2:
-            raise ValueError("Ciphertext is out of range for decryption.")
+            raise ValueError(
+                "Ciphertext is out of range for decryption -- valid Paillier ciphertexts lie in the range: [1, n^2),"
+                " where n is the public modulus."
+            )
 
         # Dec(sk=lam, c): `m = L(c^λ mod n^2) * μ mod n`, where `L(u) = (u - 1) / n` and `μ ≡ λ^-1 mod n`
         return self._L(
@@ -294,6 +295,10 @@ class PaillierPublicKey:
         as:
             Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the base `r`, of the blinding factor `r^n`, is a random prime
         in `Z_{n}^*` (i.e., r ∈ [1, n) ).
+        :param message: The non-negative integer message to be encrypted, which must lie in the range `[0, n)` to be a
+               valid Paillier message.
+        :return: The encrypted non-negative integer message, as a Paillier ciphertext, an integer `c` ∈ [1, n^2).
+        :raises ValueError: If the message is out of range for encryption (i.e., if it lies outside of: `[0, n)` ).
         """
         # Ensure the message `m` is a non-negative integer in the range [0, n) (i.e., `m` ∈ `Z_{n}`, the (additive)
         # group of integers modulo `n`).
