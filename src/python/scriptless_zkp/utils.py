@@ -50,13 +50,3 @@ def random_nonnegative_integer(upper_limit_exclusive: int) -> int:
     :return: A random non-negative integer in the range: [0, upper_limit_exclusive)
     """
     return secrets.randbelow(upper_limit_exclusive)
-
-
-def random_prime_of_size(size_bits: int) -> int:
-    """
-    Generates a random prime number of the specified size in bits, specifically a prime lying in the range:
-        `[2^(size_bits-1) + 1, 2^size_bits - 1]`
-    :param size_bits: The number of bits to use in the prime number to be generated.
-    :return: A random prime number of the specified bit size.
-    """
-    return number.getPrime(size_bits)

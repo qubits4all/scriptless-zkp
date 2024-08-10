@@ -24,6 +24,7 @@ from Cryptodome.Util import number
 import libnum
 
 from scriptless_zkp import utils
+from scriptless_zkp.number_theory import random_strong_prime
 
 MIN_KEY_SIZE: int = 2048      # Note: Min. key-size for use in Y. Lindell's 2-Party ECDSA protocol w/ 256-bit ECC keys.
 DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key size of 3072 bits.
@@ -367,24 +368,63 @@ class PaillierKeyPair:
 
         prime_factor_size_bits: int = key_size_bits // 2
 
-        # Generate two large primes: p and q, of roughly equal size (with each prime being half the key size in bits).
-        p: int = utils.random_prime_of_size(prime_factor_size_bits)
-        q: int = utils.random_prime_of_size(prime_factor_size_bits)
-
-        # Compute the public modulus: `n = p * q`
-        n = p * q
+        # Generate two large "safe" primes: `p` and `q`, of roughly equal size (half the key size in bits), which also
+        # aren't "too close together" (i.e., `|p - q| >= nroot(n, 4)`), and their product: `n = p * q`.
+        p, q, n = cls._generate_primes(prime_factor_size_bits)
 
         # Compute the private key: `λ(n) := lcm(p-1, q-1)` (i.e., the Carmichael function of n).
-        private_lambda: int = libnum.lcm(p - 1, q - 1)
+        private_lambda: int = cls._calc_private_lambda(p, q)
 
-        # Choose `g = n + 1`, a known generator ∈ B of the set of n-th residues modulo n^2, where B := the disjoint
-        # union of subsets B_𝜶 of Z_{n^2}^*, where B_𝜶 := the set of elements of Z_{n^2}^* with order `n * 𝜶`.
+        # Choose `g = n + 1`, a known generator `g ∈ B` of the set of n-th residues modulo n^2, where `B` := the set of
+        # elements of Z_{n^2}^* with order `n * 𝜶`, for 𝜶 ∈ [1, λ(n)].
         g = n + 1
 
         priv_key = PaillierPrivateKey(private_lambda, n)
         pub_key = PaillierPublicKey(n, g)
 
-        return PaillierKeyPair(pub_key, priv_key)
+        return cls(pub_key, priv_key)
+
+    @staticmethod
+    def _calc_private_lambda(p: int, q: int) -> int:
+        """
+        Computes the private key's lambda value: `λ(n) = lcm(p-1, q-1)` (i.e., the Carmichael function of `n`) for a
+        Paillier key-pair, given the two prime factors `p` and `q` of the public modulus `n = p * q`.
+
+        :param p: The first prime factor `p` of the public modulus `n = p * q`.
+        :param q: The second prime factor `q` of the public modulus `n = p * q`.
+        :return: A Paillier private key's lambda value: `λ(n) = lcm(p-1, q-1)` (i.e., the Carmichael function of `n`).
+        """
+        return libnum.lcm(p - 1, q - 1)
+
+    @staticmethod
+    def _generate_primes(size_bits: int) -> (int, int, int):
+        """
+        Generates two "strong" primes (i.e., a prime `p` such that `p - 1` and `p + 1` both have at least one large
+        prime factor), using the specified bit-size for each prime. Using "strong" primes thereby provides protection
+        against sophisticated factoring algorithms like Pollard's p-1 method.
+
+        Additionally, this method ensures the absolute difference of the two primes are greater or equal to the 4th root
+        of `n` (i.e., `|p - q| >= nroot(n, 4)`), which is a recommended security measure for Paillier key (and RSA key)
+        generation. (This ensures the two primes are not "too close together", in order to thwart brute-force attacks
+        seeking to factor the public modulus `n` via Fermat’s difference of squares method.)
+
+        :param size_bits: The bit-size to use for each of the two "strong" primes to be generated. (Each prime will lie
+               in the range: `[2^(size_bits-1) + 1, 2^size_bits - 1]`.)
+        :return: A tuple of two "strong" prime numbers: `p` and `q`, generated using the specified bit-size, along with
+                 their product, the public modulus `n = p * q` of size (2 * size_bits) bits.
+        """
+        while True:
+            p: int = random_strong_prime(size_bits)
+            q: int = random_strong_prime(size_bits)
+            n: int = p * q  # candidate public modulus: `n = p * q`
+
+            abs_diff: int = abs(p - q)
+            # Compute the (truncated) 4th root of the public modulus `n = p * q`.
+            fourth_root_n: int = libnum.nroot(n, 4)
+
+            # Ensure the two primes `p` and `q` are not "too close together" (i.e., `|p - q| >= nroot(n, 4)`).
+            if abs_diff >= fourth_root_n:
+                return p, q, n   # return "strong" primes `p` and `q`, and public modulus `n`
 
     def validate_key_pair(self) -> None:
         """
