@@ -56,10 +56,22 @@ def random_prime_of_size(size_bits: int) -> int:
     """
     Generates a random prime number of the specified size in bits, specifically a prime lying in the range:
         `[2^(size_bits-1) + 1, 2^size_bits - 1]`
+
     :param size_bits: The number of bits to use in the prime number to be generated.
     :return: A random prime number of the specified bit size.
     """
     return number.getPrime(size_bits)
+
+
+def random_strong_prime(size_bits: int) -> int:
+    """
+    Generates a random "strong" prime number of the specified size in bits, specifically a prime `p` such that `p - 1`
+    `p + 1` both have at least one large prime factor.
+
+    :param size_bits: The number of bits to use in the prime number to be generated.
+    :return: A random "strong" prime number of the specified bit size.
+    """
+    return number.getStrongPrime(size_bits)
 
 
 # TODO: Implement a more efficient version of this function that generates a random "safe" prime number.
@@ -83,16 +95,3 @@ def random_safe_prime(size_bits: int) -> int:
 
         if number.isPrime(p):
             return p
-
-
-def random_safe_prime2(size_bits: int) -> int:
-    """
-    Generates a random "safe" prime number of the specified size in bits, specifically a prime `p` such that
-    `p = 2*q + 1`, where `q` is also prime (i.e., where `q = (p - 1) / 2` is prime).
-    :param size_bits: The number of bits to use in the prime number to be generated.
-    :return: A random "safe" prime number of the specified bit size.
-    """
-    while True:
-        p_strong: int = number.getStrongPrime(size_bits)
-        if number.isPrime((p_strong - 1) // 2):
-            return p_strong
