@@ -60,3 +60,39 @@ def random_prime_of_size(size_bits: int) -> int:
     :return: A random prime number of the specified bit size.
     """
     return number.getPrime(size_bits)
+
+
+# TODO: Implement a more efficient version of this function that generates a random "safe" prime number.
+#   Applying the Pocklington criterion (http://en.wikipedia.org/wiki/Pocklington_primality_test#Pocklington_criterion)
+#   to the test for whether `p` is prime (i.e., where `p = 2*q + 1`) should provide a significant speed-up.
+#   (In this special case, we only need a single Fermat base-2 pseudo-prime test for `p`.)
+#   See: https://math.stackexchange.com/questions/870626/fast-check-of-safe-primes-or-sophie-germain-primes
+def random_safe_prime(size_bits: int) -> int:
+    """
+    Generates a random "safe" prime number of the specified size in bits, specifically a prime `p` such that
+    `p = 2*q + 1`, where `q` is also prime (i.e., where `q = (p - 1) / 2` is prime).
+    :param size_bits: The number of bits to use in the prime number to be generated.
+    :return: A random "safe" prime number of the specified bit size.
+    """
+    while True:
+        q: int = number.getPrime(size_bits - 1)
+        p: int = 2 * q + 1
+
+        assert p.bit_length() == size_bits, \
+            f"Generated prime has {p.bit_length()} bits, not the expected {size_bits} bits."
+
+        if number.isPrime(p):
+            return p
+
+
+def random_safe_prime2(size_bits: int) -> int:
+    """
+    Generates a random "safe" prime number of the specified size in bits, specifically a prime `p` such that
+    `p = 2*q + 1`, where `q` is also prime (i.e., where `q = (p - 1) / 2` is prime).
+    :param size_bits: The number of bits to use in the prime number to be generated.
+    :return: A random "safe" prime number of the specified bit size.
+    """
+    while True:
+        p_strong: int = number.getStrongPrime(size_bits)
+        if number.isPrime((p_strong - 1) // 2):
+            return p_strong

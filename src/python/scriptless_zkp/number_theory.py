@@ -201,3 +201,13 @@ def mod_inverse(a: int, modulus: int) -> int:
             moduli when `a` is not coprime to the modulus.
     """
     return number.inverse(a, modulus)
+
+
+def is_coprime(a: int, b: int) -> bool:
+    """
+    Determines whether the two integers `a` and `b` are coprime (i.e., whether their greatest common divisor is 1).
+    :param a: the first integer to be tested for co-primality (with the second integer `b`).
+    :param b: the second integer to be tested for co-primality (with the first integer `a`).
+    :return: whether the integers `a` and `b` are coprime.
+    """
+    return number.GCD(a, b) == 1
