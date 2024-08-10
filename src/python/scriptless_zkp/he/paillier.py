@@ -24,6 +24,7 @@ from Cryptodome.Util import number
 import libnum
 
 from scriptless_zkp import utils
+from scriptless_zkp.number_theory import random_strong_prime
 
 MIN_KEY_SIZE: int = 2048      # Note: Min. key-size for use in Y. Lindell's 2-Party ECDSA protocol w/ 256-bit ECC keys.
 DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key size of 3072 bits.
@@ -413,8 +414,8 @@ class PaillierKeyPair:
                  their product, the public modulus `n = p * q` of size (2 * size_bits) bits.
         """
         while True:
-            p: int = utils.random_strong_prime(size_bits)
-            q: int = utils.random_strong_prime(size_bits)
+            p: int = random_strong_prime(size_bits)
+            q: int = random_strong_prime(size_bits)
             n: int = p * q  # candidate public modulus: `n = p * q`
 
             abs_diff: int = abs(p - q)

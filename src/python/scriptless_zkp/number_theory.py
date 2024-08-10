@@ -19,6 +19,8 @@ from Cryptodome.Util import number
 
 from libnum import sqrtmod_prime_power
 
+from scriptless_zkp import utils
+
 
 def legendre_symbol(a: int, prime_modulus: int) -> int:
     """
@@ -211,3 +213,127 @@ def is_coprime(a: int, b: int) -> bool:
     :return: whether the integers `a` and `b` are coprime.
     """
     return number.GCD(a, b) == 1
+
+
+def random_prime_of_size(size_bits: int) -> int:
+    """
+    Generates a random prime number of the specified size in bits, specifically a prime lying in the range:
+        `[2^(size_bits-1) + 1, 2^size_bits - 1]`
+
+    :param size_bits: The number of bits to use in the prime number to be generated.
+    :return: A random prime number of the specified bit size.
+    """
+    return number.getPrime(size_bits)
+
+
+def random_strong_prime(size_bits: int) -> int:
+    """
+    Generates a random "strong" prime number of the specified size in bits, specifically a prime `p` such that `p - 1`
+    `p + 1` both have at least one large prime factor.
+
+    :param size_bits: The number of bits to use in the prime number to be generated.
+    :return: A random "strong" prime number of the specified bit size.
+    """
+    return number.getStrongPrime(size_bits)
+
+
+def random_safe_prime(size_bits: int) -> int:
+    """
+    Generates a random "safe" prime number of the specified size in bits, specifically a prime `p` such that
+    ``p = 2*q + 1``, where `q` is also prime (i.e., where ``q = (p - 1) / 2`` is prime). The associated prime `q`,
+    where ``q = (p-1)/2``, is thereby a Sophie Germain prime.
+
+    This function generates a random (size_bits-1)-bit probable prime `q` (verified with Miller-Rabin primality test),
+    and then applies Pocklington's criterion for primality to test whether ``p = 2*q + 1`` is prime, the latter of which
+    requires only a single-round Fermat primality test for the base 2 in this case.
+
+    :see: `Pocklington's criterion <https://en.wikipedia.org/wiki/Pocklington_primality_test#Pocklington_criterion>`_
+    :see: `Fast check of safe primes or Sophie Germain primes
+          <https://math.stackexchange.com/questions/870626/fast-check-of-safe-primes-or-sophie-germain-primes>`_
+    :see: `Fermat primality test <https://en.wikipedia.org/wiki/Fermat_primality_test>`_
+
+    :param size_bits: The number of bits to use in the prime number to be generated.
+    :return: A random "safe" prime number of the specified bit size (i.e., a prime `p` such that `p = 2*q + 1`, where
+            `q` is also prime).
+    """
+    while True:
+        # Generate a random probable prime `q` of size `size_bits-1` bits. (Uses the Miller-Rabin primality test,
+        # following a limited prime factor search.)
+        q: int = number.getPrime(size_bits - 1)
+        p: int = 2 * q + 1
+
+        assert p.bit_length() == size_bits, \
+            f"Generated prime has {p.bit_length()} bits, not the expected {size_bits} bits."
+
+        # Test if `p` is prime using a single-round Fermat primality test for the base 2, which is sufficient for
+        # satisfying Pocklington's criterion for primality, given that `q` is prime and ``p = 2*q + 1``.
+        if _fermat_primality_one_round(p, base=2):
+            return p  # `p` is a safe prime
+
+
+def is_probable_prime(n: int) -> bool:
+    """
+    Determines whether the given integer `n` is a (strong) probable prime, using the Miller-Rabin primality test.
+
+    :see: `Miller-Rabin primality test <https://en.wikipedia.org/wiki/Miller-Rabin_primality_test>`_
+
+    :param n: the integer to be tested for (strong) probable primality via the Miller-Rabin primality test.
+    :return: whether the integer `n` is a (strong) probable prime (with high probability), or definitely composite.
+    """
+    return number.isPrime(n)  # uses the Miller-Rabin primality test, following a limited prime factor search
+
+
+def fermat_primality_test(n: int, rounds: int = 10_000) -> bool:
+    """
+    Determines whether the given integer `n` is possibly prime by the Fermat primality test, or definitely composite.
+    This function performs multiple rounds of the Fermat primality test to increase the confidence in the primality of
+    the given integer `n`.
+
+    Note: The Fermat primality test is a probabilistic primality test, and is not guaranteed to correctly identify all
+    composite numbers. It is possible for a composite number to pass the Fermat primality test, in which case it is
+    known as a Fermat pseudoprime. (In fact there exist an infinite number of composite integers, known as Carmichael
+    numbers, which will pass the Fermat primality test for _all_ bases co-prime with n, and yet are composite.)
+
+    The number of rounds of the Fermat primality test can be adjusted to increase the confidence in the primality of the
+    given integer `n`. However, if high confidence is required, it is recommended to use a more rigorous primality test
+    such as the Miller-Rabin primality test.
+
+    :see: `Fermat primality test <https://en.wikipedia.org/wiki/Fermat_primality_test>`_
+
+    :param n: the integer to be tested for possible primality by the Fermat primality (pseudoprime) test.
+    :param rounds: the number of rounds of the Fermat primality test to perform (default is 10,000).
+    :return: whether the integer `n` is possibly prime by the Fermat primality test, or definitely composite.
+    """
+    for _ in range(rounds):
+        # Choose a random base for the Fermat primality test, in the range: [2, n-2]
+        base: int = utils.random_integer_in_range(2, n - 1)
+        if not _fermat_primality_one_round(n, base):
+            return False  # n is definitely composite
+
+    return True  # n is possibly prime (but may be a composite Fermat pseudoprime)
+
+
+def _fermat_primality_one_round(n: int, base: int = 2) -> bool:
+    """
+    Computes one round of the Fermat primality test, which can determine if the given integer `n` is composite
+    (i.e., not prime), or can provide evidence it may be prime. This function returns True if the Fermat primality test
+    is passed, and False if the test fails (i.e., `n` is definitely composite).
+
+    This function is intended for internal use by the `fermat_primality` function, which performs multiple rounds of
+    the Fermat primality test to increase the confidence in the primality of the given integer `n`.
+
+    :param n: the integer to be tested for being a possible prime (or a composite Fermat pseudoprime), or a composite
+           integer.
+    :param base: the base for the Fermat primality test (default is 2).
+    :return: whether the integer `n` is possibly prime by the Fermat primality test, or definitely composite.
+    """
+    if n < 2:
+        raise ValueError("The Fermat primality test is only defined for integers greater than or equal to 2.")
+    if n == 2:
+        return True
+    elif n % 2 == 0:
+        return False
+    elif base % n == 0:
+        raise ValueError("The base for the Fermat primality test must be coprime to the integer being tested.")
+    else:
+        return pow(base, n - 1, n) == 1
