@@ -22,6 +22,10 @@ from libnum import sqrtmod_prime_power
 from scriptless_zkp import utils
 
 
+DEFAULT_FERMAT_PRIMALITY_ROUNDS: int = 10_000
+"""Default number of rounds for the Fermat primality test."""
+
+
 def legendre_symbol(a: int, prime_modulus: int) -> int:
     """
     Computes the Legendre symbol of `a` modulo `p`, where `p` is an odd prime. This function returns 1 if `a` is a
@@ -243,9 +247,9 @@ def random_safe_prime(size_bits: int) -> int:
     ``p = 2*q + 1``, where `q` is also prime (i.e., where ``q = (p - 1) / 2`` is prime). The associated prime `q`,
     where ``q = (p-1)/2``, is thereby a Sophie Germain prime.
 
-    This function generates a random (size_bits-1)-bit probable prime `q` (verified with Miller-Rabin primality test),
-    and then applies Pocklington's criterion for primality to test whether ``p = 2*q + 1`` is prime, the latter of which
-    requires only a single-round Fermat primality test for the base 2 in this case.
+    This function generates a random (size_bits-1)-bit (strongly) probable prime `q` (verified with Miller-Rabin
+    primality test), and then applies Pocklington's criterion for primality to test whether ``p = 2*q + 1`` is prime,
+    the latter of which requires only a single-round Fermat primality test for the base 2 in this case.
 
     :see: `Pocklington's criterion <https://en.wikipedia.org/wiki/Pocklington_primality_test#Pocklington_criterion>`_
     :see: `Fast check of safe primes or Sophie Germain primes
@@ -273,17 +277,17 @@ def random_safe_prime(size_bits: int) -> int:
 
 def is_probable_prime(n: int) -> bool:
     """
-    Determines whether the given integer `n` is a (strong) probable prime, using the Miller-Rabin primality test.
+    Determines whether the given integer `n` is a (strongly) probable prime, using the Miller-Rabin primality test.
 
     :see: `Miller-Rabin primality test <https://en.wikipedia.org/wiki/Miller-Rabin_primality_test>`_
 
-    :param n: the integer to be tested for (strong) probable primality via the Miller-Rabin primality test.
-    :return: whether the integer `n` is a (strong) probable prime (with high probability), or definitely composite.
+    :param n: the integer to be tested for (strongly) probable primality via the Miller-Rabin primality test.
+    :return: whether the integer `n` is a (strongly) probable prime (with high probability), or definitely composite.
     """
     return number.isPrime(n)  # uses the Miller-Rabin primality test, following a limited prime factor search
 
 
-def fermat_primality_test(n: int, rounds: int = 10_000) -> bool:
+def fermat_primality_test(n: int, rounds: int = DEFAULT_FERMAT_PRIMALITY_ROUNDS) -> bool:
     """
     Determines whether the given integer `n` is possibly prime by the Fermat primality test, or definitely composite.
     This function performs multiple rounds of the Fermat primality test to increase the confidence in the primality of
@@ -301,7 +305,8 @@ def fermat_primality_test(n: int, rounds: int = 10_000) -> bool:
     :see: `Fermat primality test <https://en.wikipedia.org/wiki/Fermat_primality_test>`_
 
     :param n: the integer to be tested for possible primality by the Fermat primality (pseudoprime) test.
-    :param rounds: the number of rounds of the Fermat primality test to perform (default is 10,000).
+    :param rounds: the number of rounds of the Fermat primality test to perform (default is
+           `DEFAULT_FERMAT_PRIMALITY_ROUNDS`).
     :return: whether the integer `n` is possibly prime by the Fermat primality test, or definitely composite.
     """
     for _ in range(rounds):

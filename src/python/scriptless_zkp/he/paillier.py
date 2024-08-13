@@ -20,11 +20,19 @@ import binascii
 from dataclasses import dataclass
 
 from Cryptodome.Util import number
+from Cryptodome.IO import PKCS8
 
 import libnum
 
 from scriptless_zkp import utils
-from scriptless_zkp.number_theory import random_strong_prime
+from scriptless_zkp.he import (
+    DEFAULT_HMAC_HASH_ALGORITHM, DEFAULT_PKCS8_HMAC_SALT_BYTES, DEFAULT_PKCS8_AES_KEY_BYTES,
+    MIN_PKCS8_PASSPHRASE_LENGTH, PKCS8_KDF_PBKDF2_SHA224_AES128_CBC, PKCS8_KDF_PBKDF2_SHA256_AES128_CBC,
+    PKCS8_KDF_PBKDF2_SHA384_AES192_CBC, PKCS8_KDF_PBKDF2_SHA512_AES256_CBC, PKCS8_KDF_PBKDF2_SHA3_224_AES128_CBC,
+    PKCS8_KDF_PBKDF2_SHA3_256_AES128_CBC, PKCS8_KDF_PBKDF2_SHA3_384_AES192_CBC, PKCS8_KDF_PBKDF2_SHA3_512_AES256_CBC,
+    OWASP_PBKDF2_SHA256_ITERATIONS
+)
+from scriptless_zkp.number_theory import random_strong_prime, mod_inverse
 
 MIN_KEY_SIZE: int = 2048      # Note: Min. key-size for use in Y. Lindell's 2-Party ECDSA protocol w/ 256-bit ECC keys.
 DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key size of 3072 bits.
@@ -43,7 +51,7 @@ class PaillierPrivateKey:
         self.λ = private_lambda
         self.n = public_modulus
         # Calculate the modular inverse of the private key lambda: `λ(n)^-1 mod n`
-        self.mu = libnum.invmod(private_lambda, public_modulus)
+        self.mu = mod_inverse(private_lambda, public_modulus)
 
     @staticmethod
     def _validate(public_modulus: int) -> None:
@@ -123,6 +131,167 @@ class PaillierPrivateKey:
 
     def public_modulus_squared(self) -> int:
         return self.n2
+
+    def export_private_key(self, passphrase: str | None = None) -> str:
+        """
+        Exports this Paillier private key as a PKCS#8 encrypted private key, using the provided passphrase for
+        password-based key-wrap encryption using PBKDF2 for symmetric (AES) key derivation and AES-CBC for encryption
+        of the encoded Paillier private key; or simply encodes the private key to a base64-based string encoding, if no
+        passphrase is provided.
+
+        :param passphrase: a passphrase to use in encrypting this private key, using PKCS#8 password-based key-wrap
+               encryption; or None if the private key should only be encoded to a base64-based string encoding.
+        :return: the PKCS#8 encrypted private key as a string-encoded representation, which includes PBKDF2 parameters
+                 and the HMAC salt necessary for decrypting the private key.
+        """
+        encoded_key_base64: str = self.encode_to_base64()
+
+        if passphrase is not None:
+            if len(passphrase) < MIN_PKCS8_PASSPHRASE_LENGTH:
+                raise ValueError(
+                    f"Unsupported passphrase length [{len(passphrase)}] for PKCS#8-based Pailler private key encryption"
+                    f" -- minimum length (chars.): {MIN_PKCS8_PASSPHRASE_LENGTH}"
+                )
+
+            # Encrypt encoded private key using PKCS#8 password-based encryption, using PBKDF2 for key-wrap (symmetric)
+            # key derivation and AES-CBC for encryption (i.e., PBKDF2 w/ HMAC-SHA3-256 & AES-128-CBC by default).
+            encrypted_private_key_asn1_der: bytes = self._pkcs8_encrypt_encoded_private_key(
+                encoded_key_base64.encode('utf-8'),
+                passphrase.encode('utf-8')
+            )
+            return self._encode_pkcs8_encrypted_private_key(encrypted_private_key_asn1_der)
+        else:
+            return encoded_key_base64
+
+    def _pkcs8_encrypt_encoded_private_key(
+            self,
+            private_key_base64: bytes,
+            passphrase: bytes,
+            pbkdf2_iterations: int = OWASP_PBKDF2_SHA256_ITERATIONS,
+            hmac_hash_algorithm: str = DEFAULT_HMAC_HASH_ALGORITHM,  # default: HMAC-SHA3-256
+            salt_size_bytes: int = DEFAULT_PKCS8_HMAC_SALT_BYTES,    # default: 32 bytes (256 bits)
+            aes_key_size_bytes: int = DEFAULT_PKCS8_AES_KEY_BYTES    # default: AES-128 key size (16 bytes)
+    ) -> bytes:
+        """
+        Encrypts the base64-encoded Paillier private key using PKCS#8 password-based key-wrap encryption, using PBKDF2
+        for password-based symmetric (AES) key derivation and AES-CBC for encryption of the provided encoded private
+        key, returning a string encoding of the encrypted private key (including PBKDF2 parameters and a salt value
+        required for decryption).
+        """
+        supported_PBKDF2_profiles: set[str] = self._supported_pbkdf2_profiles()
+
+        aes_key_size_bits: int = aes_key_size_bytes * 8
+        pbkdf2_profile: str = f"PBKDF2With{hmac_hash_algorithm}AndAES{aes_key_size_bits}-CBC"
+
+        if pbkdf2_profile not in supported_PBKDF2_profiles:
+            raise ValueError(
+                f"Unsupported PKCS#8 KDF profile: '{pbkdf2_profile}' for password-based key-wrap encryption of Paillier"
+                f" private keys -- supported profiles: {supported_PBKDF2_profiles}"
+            )
+
+        # PBKDF2 parameters used for PKCS#8-based key-wrap encryption.
+        pbkdf2_params: dict[str, int] = {
+            'iteration_count': pbkdf2_iterations,  # KDF iterations for PKCS#8 key-wrap encryption
+            'salt_size': salt_size_bytes           # size of random salt for use by KDF
+        }
+
+        return PKCS8.wrap(
+            private_key=private_key_base64,
+            key_oid="",                      # empty OID for Paillier private key (no standard OID defined)
+            passphrase=passphrase,
+            protection=pbkdf2_profile,
+            prot_params=pbkdf2_params
+        )
+
+    @staticmethod
+    def _encode_pkcs8_encrypted_private_key(
+            encrypted_private_key_asn1_der: bytes,
+            pbkdf2_iterations: int
+    ) -> str:
+        """
+        Encodes a PKCS#8 encrypted private key, including the PBKDF2 parameters and HMAC salt value required for
+        successful decryption, in a string format that can be stored or transmitted securely.
+
+        Uses the string encoding format, as defined in the Password Hashing Competition's string format spec:
+        https://github.com/P-H-C/phc-string-format/blob/master/phc-sf-spec.md
+
+        :param encrypted_private_key_asn1_der: an encrypted private key wrapped in a PKCS#8 container, and encoded in
+               the (ASN.1) DER binary format, which includes the PBKDF2 (HMAC) salt value used during (symmetric)
+               key-wrap encryption key derivation.
+        :param pbkdf2_iterations: the number of iterations used in the PBKDF2 key derivation function.
+        :return: a string-encoded representation of the PKCS#8 encrypted private key, including PBKDF2 parameters
+                 necessary for successful decryption.
+        """
+        VERSION: int = 1
+        encrypted_private_key_base64: str = base64.b64encode(encrypted_private_key_asn1_der).decode('utf-8')
+
+        return f"$pbkdf2$v={VERSION}$iterations={pbkdf2_iterations}${encrypted_private_key_base64}"
+
+    @staticmethod
+    def _supported_pbkdf2_profiles() -> set[str]:
+        """
+        Returns the set of supported PKCS#8 password-based key-wrap encryption profiles, using PBKDF2 for symmetric
+        (AES) key derivation and AES-CBC for encryption of the encoded Paillier private key.
+
+        Supported profiles currently include PBKDF2 using HMAC with SHA-2 family (SHA-224, SHA-256, SHA-384, SHA-512)
+        and SHA-3 family (SHA3-224, SHA3-256, SHA3-384, SHA3-512) cryptographic hashes, and AES-CBC encryption using key
+        sizes of 128, 192 or 256 bits. Supported AES key sizes have been chosen based on the hash algorithm's output
+        (e.g., AES-128 for SHA-256, AES-192 for SHA-384, and AES-256 for SHA-512).
+
+        :return: the set of supported PKCS#8 password-based key-wrap encryption profiles.
+        """
+        return {
+            PKCS8_KDF_PBKDF2_SHA224_AES128_CBC,
+            PKCS8_KDF_PBKDF2_SHA256_AES128_CBC,
+            PKCS8_KDF_PBKDF2_SHA384_AES192_CBC,
+            PKCS8_KDF_PBKDF2_SHA512_AES256_CBC,
+            PKCS8_KDF_PBKDF2_SHA3_224_AES128_CBC,
+            PKCS8_KDF_PBKDF2_SHA3_256_AES128_CBC,
+            PKCS8_KDF_PBKDF2_SHA3_384_AES192_CBC,
+            PKCS8_KDF_PBKDF2_SHA3_512_AES256_CBC
+        }
+
+    def import_private_key(
+            self,
+            encoded_private_key: str,
+            passphrase: str | None = None
+    ) -> PaillierPrivateKey:
+        """
+        Imports a Paillier private key from a PKCS#8 encrypted private key, using the provided passphrase for
+        password-based key-wrap decryption of the private key.
+
+        :param encoded_private_key: Paillier private key to be imported, provided in a string encoding, which may be
+               PKCS#8 encrypted.
+        :param passphrase: passphrase to use for decrypting a PKCS#8 encrypted private key; or None if the private
+               key is not encrypted.
+        :return: a successfully decoded and/or decrypted Paillier private key.
+        :raises ValueError: if the encoded private key is invalidly encoded, or is encrypted and could not be decrypted.
+        """
+        if passphrase is not None:
+            encrypted_private_key_asn1_der, pbkdf2_params = self._decode_pkcs8_encrypted_private_key(
+                encoded_private_key
+            )
+
+            # Decrypt PKCS#8 encrypted Paillier private key.
+            private_key_base64_bytes: bytes = self._pkcs8_decrypt_private_key(
+                encrypted_private_key_asn1_der,
+                passphrase
+            )
+
+            return self.from_base64_encoding(private_key_base64_bytes.decode('utf-8'))
+        else:
+            return self.from_base64_encoding(encoded_private_key)
+
+    # TODO: Implement PKCS#8-based private key decryption, using the PyCryptodome library's 'PKCS8' module.
+    def _pkcs8_decrypt_private_key(self, encrypted_private_key_asn1_der: bytes, passphrase: str) -> bytes:
+        pass
+
+    # TODO: Implement a decoding method for PKCS#8 encrypted Paillier private keys, which parses the PBKDF2 parameters
+    #   required for decryption.
+    # Note: Consider using the Argon2-related string encoding format (i.e., that used in the Password Hashing
+    #   Competition: https://github.com/P-H-C/phc-string-format/blob/master/phc-sf-spec.md).
+    def _decode_pkcs8_encrypted_private_key(self, encrypted_private_key: str) -> (bytes, dict[str, int]):
+        pass
 
     def encode_to_base64(self) -> str:
         """
@@ -438,8 +607,8 @@ class PaillierKeyPair:
         """
         self._validate(self.public_key, self.private_key)
 
-    def encode_private_key(self) -> str:
-        return self.private_key.encode_to_base64()
+    def export_private_key(self, passphrase: str | bytearray) -> str:
+        return self.private_key.export_private_key(passphrase)
 
     def encode_public_key(self) -> str:
         return self.public_key.encode_to_base64()
