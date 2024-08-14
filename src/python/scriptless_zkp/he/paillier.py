@@ -40,27 +40,61 @@ DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key s
 
 @dataclass
 class PaillierPrivateKey:
-    λ: int                  # private key lambda: `λ(n) = lcm(p-1, q-1)` -- The Carmichael function of public modulus n
-    n: int                  # public modulus: `n = p * q`, for private p, q prime
-    mu: int                 # modular inverse of private key lambda: `λ(n)^-1 mod n`
-    _n2: int | None = None  # cached square `n^2` of the public modulus `n`
+    p: int   # private prime p
+    q: int   # private prime q
 
-    def __init__(self, private_lambda: int, public_modulus: int):
-        self._validate(public_modulus)
+    # noinspection NonAsciiCharacters
+    λ: int   # private key lambda: `λ(n) = lcm(p-1, q-1)` -- The Carmichael function of public modulus n
+    n: int   # public modulus: `n = p * q`, for private p, q prime
+    mu: int  # modular inverse of private key lambda: `λ(n)^-1 mod n`
+    n2: int  # cached square `n^2` of the public modulus `n`
 
-        self.λ = private_lambda
-        self.n = public_modulus
+    # noinspection NonAsciiCharacters
+    def __init__(self, private_prime_p: int, private_prime_q: int, validate: bool = False):
+        self.p = private_prime_p
+        self.q = private_prime_q
+
+        # Compute the private key: `λ(n) := lcm(p-1, q-1)` (i.e., the Carmichael function of n).
+        self.λ = self._calc_private_lambda(private_prime_p, private_prime_q)
+        self.n = private_prime_p * private_prime_q
+        self.n2 = self.n ** 2
+
+        if validate:
+            self._validate(private_prime_p, private_prime_q, self.n)
+
         # Calculate the modular inverse of the private key lambda: `λ(n)^-1 mod n`
-        self.mu = mod_inverse(private_lambda, public_modulus)
+        self.mu = mod_inverse(self.λ, self.n)
 
     @staticmethod
-    def _validate(public_modulus: int) -> None:
-        # Verify the Paillier private key's public modulus is at least 2047 bits (i.e., MIN_KEY_SIZE - 1).
-        # Note: The modulus `n : = p*q`, where `p` and `q` are prime, can be between 2047 & 2048 bits, due to the
-        #   1024-bit primes `p` & `q` allowed values lying inside the range: [2^(1023) + 1, 2^(1024) - 1]
-        if public_modulus.bit_length() < (MIN_KEY_SIZE - 1):
+    def _calc_private_lambda(p: int, q: int) -> int:
+        """
+        Computes the private key's lambda value: `λ(n) = lcm(p-1, q-1)` (i.e., the Carmichael function of `n`) for a
+        Paillier key-pair, given the two prime factors `p` and `q` of the public modulus `n = p * q`.
+
+        :param p: The first prime factor `p` of the public modulus `n = p * q`.
+        :param q: The second prime factor `q` of the public modulus `n = p * q`.
+        :return: A Paillier private key's lambda value: `λ(n) = lcm(p-1, q-1)` (i.e., the Carmichael function of `n`).
+        """
+        return libnum.lcm(p - 1, q - 1)
+
+    @staticmethod
+    def _validate(private_prime_p: int, private_prime_q: int, public_modulus: int) -> None:
+        if private_prime_p == private_prime_q:
+            raise ValueError("Invalid Paillier private key -- prime factors 'p' and 'q' must be distinct.")
+
+        min_private_primes_size: int = MIN_KEY_SIZE // 2 - 1
+        if (
+            private_prime_p.bit_length() < min_private_primes_size
+                or private_prime_q.bit_length() < min_private_primes_size
+        ):
             raise ValueError(
-                f"Invalid Paillier private key -- public modulus must be at least [{MIN_KEY_SIZE - 1}] bits."
+                f"Invalid Paillier private key -- private prime factors 'p' and 'q' of the public modulus must be at"
+                f" least [{min_private_primes_size}] bits each."
+            )
+
+        if public_modulus.bit_length() < MIN_KEY_SIZE - 1:
+            raise ValueError(
+                f"Invalid Paillier private key -- public modulus must be at least [{MIN_KEY_SIZE - 2}] bits."
             )
 
     def validate_private_key(self) -> None:
@@ -70,7 +104,7 @@ class PaillierPrivateKey:
 
         :raises ValueError: If this Paillier private key is invalid.
         """
-        return self._validate(self.n)
+        return self._validate(self.p, self.q, self.n)
 
     def __str__(self) -> str:
         """
@@ -98,27 +132,19 @@ class PaillierPrivateKey:
                 f" [fields_count={len(parsed_fields)}]"
             )
 
-        private_lambda_base64, public_modulus_base64 = parsed_fields
+        private_prime_p_base64, private_prime_q_base64 = parsed_fields
 
         try:
-            private_lambda: int = number.bytes_to_long(
-                base64.b64decode(private_lambda_base64, validate=True)
+            private_prime_p: int = number.bytes_to_long(
+                base64.b64decode(private_prime_p_base64, validate=True)
             )
-            public_modulus: int = number.bytes_to_long(
-                base64.b64decode(public_modulus_base64, validate=True)
+            private_prime_q: int = number.bytes_to_long(
+                base64.b64decode(private_prime_q_base64, validate=True)
             )
         except binascii.Error as b64ex:
             raise ValueError(f"Invalid base64 encoding for Paillier private key -- exception: {b64ex}")
         else:
-            return cls(private_lambda, public_modulus)
-
-    @property
-    def n2(self) -> int:
-        # Lazily compute n^2 and cache the result, on first access.
-        if self._n2 is None:
-            self._n2 = self.n ** 2
-
-        return self._n2
+            return cls(private_prime_p, private_prime_q, validate=True)
 
     def private_lambda(self) -> int:
         return self.λ
@@ -296,17 +322,17 @@ class PaillierPrivateKey:
     def encode_to_base64(self) -> str:
         """
         Returns a base64-based encoding of this Paillier private key, which uses the following format:
-            `{private_lambda_base64}:{public_modulus_base64}`
+            `{private_prime_p_base64}:{private_prime_q_base64}`
         """
-        private_lambda_base64: str = base64.b64encode(
-            number.long_to_bytes(self.λ)
+        private_prime_p_base64: str = base64.b64encode(
+            number.long_to_bytes(self.p)
         ).decode('utf-8')
 
-        public_modulus_base64: str = base64.b64encode(
-            number.long_to_bytes(self.n)
+        private_prime_q_base64: str = base64.b64encode(
+            number.long_to_bytes(self.q)
         ).decode('utf-8')
 
-        return f"{private_lambda_base64}:{public_modulus_base64}"
+        return f"{private_prime_p_base64}:{private_prime_q_base64}"
 
     def decrypt(self, ciphertext: EncryptedUnsignedInteger) -> int:
         """
@@ -339,7 +365,7 @@ class PaillierPrivateKey:
         This formula produces an integer result for all u ∈ S_n, where S_n := {u < n^2 | u ≡ 1 mod n}.
         :raises AssertionError: If the input `u` is not in the range [1, n^2) or is not congruent to 1 modulo `n`.
         """
-        # Ensure u ∈ Z_{n^2}^* (i.e., u is a non-zero element of the multiplicative group of integers modulo n^2).
+        # Ensure u ∈ Z_{n^2}^* (i.e., u is an element of the multiplicative group of integers modulo n^2).
         assert 0 < u < n ** 2, "u must be in the range [1, n^2)."
         # Ensure that L(u, n) is well-defined (i.e., u ≡ 1 mod n).
         assert u % n == 1, "u must be congruent to 1 modulo n."
@@ -349,9 +375,9 @@ class PaillierPrivateKey:
 
 @dataclass
 class PaillierPublicKey:
-    n: int                 # public modulus: `n = p * q`, for private p, q prime
-    g: int                 # public generator `g ∈ B` of the set of n-th residues modulo n^2 (i.e., `g` generates CR[n])
-    _n2: int | None = None
+    n: int   # public modulus: `n = p * q`, for private p, q prime
+    g: int   # public generator `g ∈ B` of the set of n-th residues modulo n^2 (i.e., `g` generates CR[n])
+    n2: int  # cached square `n^2` of the public modulus `n`
 
     def __init__(self, public_modulus: int, public_generator: int, validate: bool = False):
         if validate:
@@ -359,6 +385,7 @@ class PaillierPublicKey:
 
         self.n = public_modulus
         self.g = public_generator
+        self.n2 = public_modulus ** 2
 
     @staticmethod
     def _validate(public_modulus: int, public_generator: int) -> None:
@@ -373,7 +400,7 @@ class PaillierPublicKey:
         # Require generator `g` to equal `n + 1`, as this impl. uses this specific generator as an optimization.
         if public_generator != public_modulus + 1:
             raise ValueError(
-                "Invalid Paillier public key -- the public generator 'g' must be equal to: n + 1, where 'n' is the"
+                "Unsupported Paillier public key -- the public generator 'g' must be equal to 'n + 1', where 'n' is the"
                 " public modulus."
             )
 
@@ -431,14 +458,6 @@ class PaillierPublicKey:
         return (
             f"PaillierPublicKey(n, g)='{self.encode_to_base64()}'"
         )
-
-    @property
-    def n2(self) -> int:
-        # Lazily compute n^2 and cache the result, on first access.
-        if self._n2 is None:
-            self._n2 = self.n ** 2
-
-        return self._n2
 
     def public_modulus(self) -> int:
         return self.n
@@ -511,6 +530,8 @@ class PaillierKeyPair:
         if private_key.n != public_key.n:
             raise ValueError("Paillier public and private keys must have the same public modulus.")
 
+        private_key.validate_private_key()
+
         public_key.validate_public_key()
 
         # Verify: `g^λ == 1 mod n`, where g is the public generator, n := p * q is the public modulus
@@ -541,29 +562,14 @@ class PaillierKeyPair:
         # aren't "too close together" (i.e., `|p - q| >= nroot(n, 4)`), and their product: `n = p * q`.
         p, q, n = cls._generate_primes(prime_factor_size_bits)
 
-        # Compute the private key: `λ(n) := lcm(p-1, q-1)` (i.e., the Carmichael function of n).
-        private_lambda: int = cls._calc_private_lambda(p, q)
-
         # Choose `g = n + 1`, a known generator `g ∈ B` of the set of n-th residues modulo n^2, where `B` := the set of
         # elements of Z_{n^2}^* with order `n * 𝜶`, for 𝜶 ∈ [1, λ(n)].
         g = n + 1
 
-        priv_key = PaillierPrivateKey(private_lambda, n)
+        priv_key = PaillierPrivateKey(p, q)
         pub_key = PaillierPublicKey(n, g)
 
         return cls(pub_key, priv_key)
-
-    @staticmethod
-    def _calc_private_lambda(p: int, q: int) -> int:
-        """
-        Computes the private key's lambda value: `λ(n) = lcm(p-1, q-1)` (i.e., the Carmichael function of `n`) for a
-        Paillier key-pair, given the two prime factors `p` and `q` of the public modulus `n = p * q`.
-
-        :param p: The first prime factor `p` of the public modulus `n = p * q`.
-        :param q: The second prime factor `q` of the public modulus `n = p * q`.
-        :return: A Paillier private key's lambda value: `λ(n) = lcm(p-1, q-1)` (i.e., the Carmichael function of `n`).
-        """
-        return libnum.lcm(p - 1, q - 1)
 
     @staticmethod
     def _generate_primes(size_bits: int) -> (int, int, int):
