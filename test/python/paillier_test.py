@@ -15,7 +15,7 @@
 import unittest
 
 from scriptless_zkp.he.paillier import (
-    PaillierKeyPair, MIN_KEY_SIZE, EncryptedUnsignedInteger
+    PaillierKeyPair, MIN_KEY_SIZE, EncryptedUnsignedInteger, PaillierPrivateKey, PaillierPublicKey
 )
 from scriptless_zkp.number_theory import mod_inverse
 from scriptless_zkp.utils import random_positive_integer
@@ -53,8 +53,8 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
 
         # Print the base64-encoded public and private keys.
         print(
-            f"\nPublic Key (n, g): {key_pair.public_key.encode_to_base64()}\n"
-            f"Private Key (λ, n): {key_pair.private_key.encode_to_base64()}"
+            f"\nPublic Key (n, g): {key_pair.public_key._encode_to_base64()}\n"
+            f"Private Key (λ, n): {key_pair.private_key._encode_to_base64()}"
         )
 
         self.assertIsNone(key_pair.validate_key_pair())
@@ -78,8 +78,8 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
     def test_encryption_validity_small_value(self):
         # Print the base64-encoded public and private keys.
         print(
-            f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
-            f"Private Key (λ, n): {self.test_key_pair.private_key.encode_to_base64()}"
+            f"\nPublic Key (n, g): {self.test_key_pair.public_key._encode_to_base64()}\n"
+            f"Private Key (λ, n): {self.test_key_pair.private_key._encode_to_base64()}"
         )
 
         ciphertext = self.test_key_pair.public_key.encrypt(self.small_test_msg1)
@@ -93,8 +93,8 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
     def test_encryption_validity_large_value(self):
         # Print the base64-encoded public and private keys.
         print(
-            f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
-            f"Private Key (λ, n): {self.test_key_pair.private_key.encode_to_base64()}"
+            f"\nPublic Key (n, g): {self.test_key_pair.public_key._encode_to_base64()}\n"
+            f"Private Key (λ, n): {self.test_key_pair.private_key._encode_to_base64()}"
         )
 
         ciphertext = self.test_key_pair.public_key.encrypt(self.large_test_msg1)
@@ -108,8 +108,8 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
     def test_encryption_and_decryption_small_value(self):
         # Print the base64-encoded public and private keys.
         print(
-            f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
-            f"Private Key (λ, n): {self.test_key_pair.private_key.encode_to_base64()}"
+            f"\nPublic Key (n, g): {self.test_key_pair.public_key._encode_to_base64()}\n"
+            f"Private Key (λ, n): {self.test_key_pair.private_key._encode_to_base64()}"
         )
 
         ciphertext = self.test_key_pair.public_key.encrypt(self.small_test_msg1)
@@ -121,8 +121,8 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
     def test_encryption_and_decryption_large_value(self):
         # Print the base64-encoded public and private keys.
         print(
-            f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
-            f"Private Key (λ, n): {self.test_key_pair.private_key.encode_to_base64()}"
+            f"\nPublic Key (n, g): {self.test_key_pair.public_key._encode_to_base64()}\n"
+            f"Private Key (λ, n): {self.test_key_pair.private_key._encode_to_base64()}"
         )
 
         ciphertext = self.test_key_pair.public_key.encrypt(self.large_test_msg1)
@@ -134,8 +134,8 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
     def test_homomorphic_addition_of_small_values(self):
         # Print the base64-encoded public and private keys.
         print(
-            f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
-            f"Private Key (λ, n): {self.test_key_pair.private_key.encode_to_base64()}"
+            f"\nPublic Key (n, g): {self.test_key_pair.public_key._encode_to_base64()}\n"
+            f"Private Key (λ, n): {self.test_key_pair.private_key._encode_to_base64()}"
         )
 
         ciphertext1: EncryptedUnsignedInteger = self.test_key_pair.public_key.encrypt(self.small_test_msg1)
@@ -166,8 +166,8 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
     def test_homomorphic_addition_of_large_values(self):
         # Print the base64-encoded public and private keys.
         print(
-            f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
-            f"Private Key (λ, n): {self.test_key_pair.private_key.encode_to_base64()}"
+            f"\nPublic Key (n, g): {self.test_key_pair.public_key._encode_to_base64()}\n"
+            f"Private Key (λ, n): {self.test_key_pair.private_key._encode_to_base64()}"
         )
 
         ciphertext1: EncryptedUnsignedInteger = self.test_key_pair.public_key.encrypt(self.large_test_msg2)
@@ -198,8 +198,8 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
     def test_homomorphic_addition_of_scalar_and_ciphertext(self):
         # Print the base64-encoded public and private keys.
         print(
-            f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
-            f"Private Key (λ, n): {self.test_key_pair.private_key.encode_to_base64()}"
+            f"\nPublic Key (n, g): {self.test_key_pair.public_key._encode_to_base64()}\n"
+            f"Private Key (λ, n): {self.test_key_pair.private_key._encode_to_base64()}"
         )
 
         ciphertext: EncryptedUnsignedInteger = self.test_key_pair.public_key.encrypt(self.large_test_msg1)
@@ -225,8 +225,8 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
     def test_homomorphic_scalar_multiplication_mul_small_values(self):
         # Print the base64-encoded public and private keys.
         print(
-            f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
-            f"Private Key (λ, n): {self.test_key_pair.private_key.encode_to_base64()}"
+            f"\nPublic Key (n, g): {self.test_key_pair.public_key._encode_to_base64()}\n"
+            f"Private Key (λ, n): {self.test_key_pair.private_key._encode_to_base64()}"
         )
 
         ciphertext: EncryptedUnsignedInteger = self.test_key_pair.public_key.encrypt(self.small_test_msg1)
@@ -253,8 +253,8 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
     def test_homomorphic_scalar_multiplication_rmul_small_values(self):
         # Print the base64-encoded public and private keys.
         print(
-            f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
-            f"Private Key (λ, n): {self.test_key_pair.private_key.encode_to_base64()}"
+            f"\nPublic Key (n, g): {self.test_key_pair.public_key._encode_to_base64()}\n"
+            f"Private Key (λ, n): {self.test_key_pair.private_key._encode_to_base64()}"
         )
 
         ciphertext: EncryptedUnsignedInteger = self.test_key_pair.public_key.encrypt(self.small_test_msg1)
@@ -281,8 +281,8 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
     def test_homomorphic_scalar_multiplication_large_values(self):
         # Print the base64-encoded public and private keys.
         print(
-            f"\nPublic Key (n, g): {self.test_key_pair.public_key.encode_to_base64()}\n"
-            f"Private Key (λ, n): {self.test_key_pair.private_key.encode_to_base64()}"
+            f"\nPublic Key (n, g): {self.test_key_pair.public_key._encode_to_base64()}\n"
+            f"Private Key (λ, n): {self.test_key_pair.private_key._encode_to_base64()}"
         )
 
         ciphertext: EncryptedUnsignedInteger = self.test_key_pair.public_key.encrypt(self.large_test_msg4)
@@ -545,6 +545,64 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
             "The decryption of the homomorphic product of the obfuscated ciphertext and its scalar multiplier's"
             " inverse modulo n^2 should match the original plaintext integer."
         )
+
+    def test_private_key_encoding_and_decoding(self):
+        private_key = self.test_key_pair.private_key
+
+        encoded_private_key: str = private_key._encode_to_base64()
+
+        # Print the base64-encoded private key.
+        print(f"\nPrivate Key (p:q) -- base64-encoded: {encoded_private_key}")
+
+        # Decode the base64-encoded private key.
+        decoded_key = PaillierPrivateKey._decode_from_base64(encoded_private_key)
+
+        # Verify the decoded private key matches the original private key.
+        self.assertEqual(private_key, decoded_key)
+
+    def test_private_key_unencrypted_export_and_import(self):
+        private_key = self.test_key_pair.private_key
+
+        exported_private_key: str = private_key.export_private_key(passphrase=None)
+
+        # Print the exported non-encrypted private key.
+        print(f"\nPrivate Key (p:q) -- exported (unencrypted): {exported_private_key}")
+
+        # Decode the base64-encoded private key.
+        decoded_key = PaillierPrivateKey._decode_from_base64(exported_private_key)
+
+        # Verify the decoded private key matches the original private key.
+        self.assertEqual(private_key, decoded_key)
+
+    def test_public_key_encoding_and_decoding(self):
+        public_key = self.test_key_pair.public_key
+
+        encoded_public_key: str = public_key._encode_to_base64()
+
+        # Print the base64-encoded public key.
+        print(f"\nPublic Key (n:g) -- base64-encoded: {encoded_public_key}")
+
+        # Decode the base64-encoded public key.
+        decoded_key = PaillierPublicKey._decode_from_base64(encoded_public_key)
+
+        # Verify the decoded public key matches the original public key.
+        self.assertEqual(public_key, decoded_key)
+
+    def test_private_key_encrypted_export_and_import(self):
+        private_key = self.test_key_pair.private_key
+
+        test_passphrase: str = "correct horse battery staple"
+
+        encrypted_private_key: str = private_key.export_private_key(test_passphrase)
+
+        # Print the exported encrypted private key.
+        print(f"\nPrivate Key (p:q) -- exported (encrypted): {encrypted_private_key}")
+
+        # Decrypt & decode the base64-encoded private key.
+        decoded_key = PaillierPrivateKey.import_private_key(encrypted_private_key, test_passphrase)
+
+        # Verify the decoded private key matches the original private key.
+        self.assertEqual(private_key, decoded_key)
 
 
 if __name__ == '__main__':
