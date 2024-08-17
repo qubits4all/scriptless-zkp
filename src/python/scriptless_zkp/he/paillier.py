@@ -158,7 +158,14 @@ class PaillierPrivateKey:
     def public_modulus_squared(self) -> int:
         return self.n2
 
-    def export_private_key(self, passphrase: str | None) -> str:
+    def export_private_key(
+            self,
+            passphrase: str | None,
+            pbkdf2_iterations: int = OWASP_PBKDF2_SHA256_ITERATIONS,  # default: 600,000 per OWASP 2023 guidelines
+            hmac_hash_algorithm: str = DEFAULT_HMAC_HASH_ALGORITHM,   # default: HMAC-SHA3-256
+            salt_size_bytes: int = DEFAULT_PKCS8_HMAC_SALT_BYTES,     # default: 32 bytes (256 bits)
+            aes_key_size_bytes: int = DEFAULT_PKCS8_AES_KEY_BYTES     # default: AES-128 (16 bytes)
+    ) -> str:
         """
         Exports this Paillier private key as a PKCS#8 encrypted private key, using the provided passphrase for
         password-based key-wrap encryption using PBKDF2 for symmetric (AES) key derivation and AES-CBC for encryption
@@ -167,6 +174,14 @@ class PaillierPrivateKey:
 
         :param passphrase: a passphrase to use in encrypting this private key, using PKCS#8 password-based key-wrap
                encryption; or None if the private key should only be encoded to a base64-based string encoding.
+        :param pbkdf2_iterations: the number of iterations to use in the PBKDF2 key derivation function for symmetric
+               key-wrap encryption (default: `OWASP_PBKDF2_SHA256_ITERATIONS` per OWASP 2023 guidelines).
+        :param hmac_hash_algorithm: the cryptographic hash algorithm to be used with HMAC in the PBKDF2 key derivation
+               function for symmetric key-wrap encryption (default: `DEFAULT_HMAC_HASH_ALGORITHM`).
+        :param salt_size_bytes: the size of the random salt value to be used in the PBKDF2 key derivation function for
+               symmetric key-wrap encryption (default: `DEFAULT_PKCS8_HMAC_SALT_BYTES`).
+        :param aes_key_size_bytes: the size of the AES key to be used in the AES-CBC encryption of the encoded private
+               key (default: `DEFAULT_PKCS8_AES_KEY_BYTES`).
         :return: the PKCS#8 encrypted private key as a string-encoded representation, which includes PBKDF2 parameters
                  and the HMAC salt necessary for decrypting the private key.
         :raises ValueError: if the passphrase is too short for PKCS#8 encryption (i.e., < `MIN_PKCS8_PASSPHRASE_LENGTH`
@@ -177,23 +192,27 @@ class PaillierPrivateKey:
         if passphrase is not None:
             if len(passphrase) < MIN_PKCS8_PASSPHRASE_LENGTH:
                 raise ValueError(
-                    f"Unsupported passphrase length [{len(passphrase)}] for PKCS#8-based Pailler private key encryption"
-                    f" -- minimum length (chars.): {MIN_PKCS8_PASSPHRASE_LENGTH}"
+                    f"Unsupported passphrase length [{len(passphrase)}] for PKCS#8-based Paillier private key"
+                    f" encryption -- minimum length (chars.): {MIN_PKCS8_PASSPHRASE_LENGTH}"
                 )
 
             # Encrypt encoded private key using PKCS#8 password-based encryption, using PBKDF2 for key-wrap (symmetric)
-            # key derivation and AES-CBC for encryption (i.e., PBKDF2 w/ HMAC-SHA3-256 & AES-128-CBC by default).
+            # key derivation and AES-CBC for encryption (e.g., PBKDF2 w/ HMAC-SHA3-256 & AES-128-CBC by default).
             encrypted_private_key_asn1_der, pbkdf2_params = self._pkcs8_encrypt_encoded_private_key(
                 encoded_key_base64.encode('utf-8'),
-                passphrase.encode('utf-8')
+                passphrase.encode('utf-8'),
+                pbkdf2_iterations=pbkdf2_iterations,
+                hmac_hash_algorithm=hmac_hash_algorithm,
+                salt_size_bytes=salt_size_bytes,
+                aes_key_size_bytes=aes_key_size_bytes
             )
 
             return self._encode_pkcs8_encrypted_private_key(encrypted_private_key_asn1_der, pbkdf2_params)
         else:
             return encoded_key_base64
 
+    @staticmethod
     def _pkcs8_encrypt_encoded_private_key(
-            self,
             private_key_base64: bytes,
             passphrase: bytes,
             pbkdf2_iterations: int = OWASP_PBKDF2_SHA256_ITERATIONS,
@@ -206,8 +225,23 @@ class PaillierPrivateKey:
         for password-based symmetric (AES) key derivation and AES-CBC for encryption of the provided encoded private
         key, returning a string encoding of the encrypted private key (including PBKDF2 parameters and a salt value
         required for decryption).
+
+        :param private_key_base64: a base64-encoded representation of the Paillier private key to be encrypted.
+        :param passphrase: a passphrase to use in encrypting this private key, using PKCS#8 password-based key-wrap
+               encryption; or None if the private key should only be encoded to a base64-based string encoding.
+        :param pbkdf2_iterations: the number of iterations to use in the PBKDF2 key derivation function for symmetric
+               key-wrap encryption (default: `OWASP_PBKDF2_SHA256_ITERATIONS` per OWASP 2023 guidelines).
+        :param hmac_hash_algorithm: the cryptographic hash algorithm to be used with HMAC in the PBKDF2 key derivation
+               function for symmetric key-wrap encryption (default: `DEFAULT_HMAC_HASH_ALGORITHM`).
+        :param salt_size_bytes: the size of the random salt value to be used in the PBKDF2 key derivation function for
+               symmetric key-wrap encryption (default: `DEFAULT_PKCS8_HMAC_SALT_BYTES`).
+        :param aes_key_size_bytes: the size of the AES key to be used in the AES-CBC encryption of the encoded private
+               key (default: `DEFAULT_PKCS8_AES_KEY_BYTES`).
+        :return: the PKCS#8 encrypted private key in the binary ASN.1 DER format, along with a dictionary containing the
+                 PBKDF2 parameters used for symmetric key derivation (i.e., the number of iterations & size of the
+                 random salt used).
         """
-        supported_PBKDF2_profiles: set[str] = self._supported_pbkdf2_profiles()
+        supported_PBKDF2_profiles: set[str] = PaillierPrivateKey._supported_pbkdf2_profiles()
 
         aes_key_size_bits: int = aes_key_size_bytes * 8
         pbkdf2_profile: str = f"PBKDF2With{hmac_hash_algorithm}AndAES{aes_key_size_bits}-CBC"
@@ -224,12 +258,16 @@ class PaillierPrivateKey:
             'salt_size': salt_size_bytes           # size of random salt for use by KDF
         }
 
-        # TODO: Replace this temporary OID (borrowed from RSA).
-        temp_oid: str = '1.2.840.113549.1.1.1'  # FIXME: Use a proper OID for Paillier private keys
+        # Note: The standard RSA OID is used here as a placeholder for Paillier private keys, as there is no specific
+        #   standardized ASN.1 OID for Paillier private keys, as of the time of writing (2024), and Paillier private
+        #   keys are actually fully compatible with conventional RSA private keys, when using the two private prime
+        #   factors `p` & `q` of the public modulus `n` as the private key's components (i.e., as opposed to the
+        #   Paillier-specific private lambda-based representation).
+        rsa_oid: str = '1.2.840.113549.1.1.1'
 
         return PKCS8.wrap(
             private_key=private_key_base64,
-            key_oid=temp_oid,
+            key_oid=rsa_oid,
             passphrase=passphrase,
             protection=pbkdf2_profile,
             prot_params=pbkdf2_params
