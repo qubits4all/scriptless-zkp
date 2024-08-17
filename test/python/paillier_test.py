@@ -604,6 +604,24 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
         # Verify the decoded private key matches the original private key.
         self.assertEqual(private_key, decoded_key)
 
+    def test_private_key_encrypted_export_invalid_passphrase_import(self):
+        """
+        Negative test-case for importing an encrypted private key with an invalid passphrase, verifying the expected
+        `ValueError` exception is raised.
+        """
+        private_key = self.test_key_pair.private_key
+
+        test_passphrase: str = "correct horse battery staple"
+
+        encrypted_private_key: str = private_key.export_private_key(test_passphrase)
+
+        # Print the exported encrypted private key.
+        print(f"\nPrivate Key (p:q) -- exported (encrypted): {encrypted_private_key}")
+
+        # Attempt to decrypt & decode the base64-encoded private key with an invalid passphrase.
+        with self.assertRaises(ValueError) as ve:
+            _ = PaillierPrivateKey.import_private_key(encrypted_private_key, "invalid passphrase")
+
 
 if __name__ == '__main__':
     unittest.main()
