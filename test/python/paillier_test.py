@@ -561,7 +561,7 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
         self.assertEqual(private_key, decoded_key)
 
     def test_private_key_unencrypted_export_and_import(self):
-        private_key = self.test_key_pair.private_key
+        private_key: PaillierPrivateKey = self.test_key_pair.private_key
 
         exported_private_key: str = private_key.export_private_key(passphrase=None)
 
@@ -569,7 +569,7 @@ class PaillierHomomorphicEncryptionTests(unittest.TestCase):
         print(f"\nPrivate Key (p:q) -- exported (unencrypted): {exported_private_key}")
 
         # Decode the base64-encoded private key.
-        decoded_key = PaillierPrivateKey._decode_from_base64(exported_private_key)
+        decoded_key = PaillierPrivateKey.import_private_key(exported_private_key, passphrase=None)
 
         # Verify the decoded private key matches the original private key.
         self.assertEqual(private_key, decoded_key)
