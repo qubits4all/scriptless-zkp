@@ -20,39 +20,82 @@ import binascii
 from dataclasses import dataclass
 
 from Cryptodome.Util import number
+from Cryptodome.IO import PKCS8
 
 import libnum
 
 from scriptless_zkp import utils
-from scriptless_zkp.number_theory import random_strong_prime
+from scriptless_zkp.he import (
+    DEFAULT_HMAC_HASH_ALGORITHM, DEFAULT_PKCS8_HMAC_SALT_BYTES, DEFAULT_PKCS8_AES_KEY_BYTES,
+    MIN_PKCS8_PASSPHRASE_LENGTH, PKCS8_KDF_PBKDF2_SHA224_AES128_CBC, PKCS8_KDF_PBKDF2_SHA256_AES128_CBC,
+    PKCS8_KDF_PBKDF2_SHA384_AES192_CBC, PKCS8_KDF_PBKDF2_SHA512_AES256_CBC, PKCS8_KDF_PBKDF2_SHA3_224_AES128_CBC,
+    PKCS8_KDF_PBKDF2_SHA3_256_AES128_CBC, PKCS8_KDF_PBKDF2_SHA3_384_AES192_CBC, PKCS8_KDF_PBKDF2_SHA3_512_AES256_CBC,
+    OWASP_PBKDF2_SHA256_ITERATIONS
+)
+from scriptless_zkp.number_theory import random_strong_prime, mod_inverse
 
 MIN_KEY_SIZE: int = 2048      # Note: Min. key-size for use in Y. Lindell's 2-Party ECDSA protocol w/ 256-bit ECC keys.
 DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key size of 3072 bits.
+RSA_OID: str = '1.2.840.113549.1.1.1'  # RSA OID used as a placeholder for Paillier private keys (no specific OID).
 
 
 @dataclass
 class PaillierPrivateKey:
-    λ: int                  # private key lambda: `λ(n) = lcm(p-1, q-1)` -- The Carmichael function of public modulus n
-    n: int                  # public modulus: `n = p * q`, for private p, q prime
-    mu: int                 # modular inverse of private key lambda: `λ(n)^-1 mod n`
-    _n2: int | None = None  # cached square `n^2` of the public modulus `n`
+    p: int   # private prime p
+    q: int   # private prime q
 
-    def __init__(self, private_lambda: int, public_modulus: int):
-        self._validate(public_modulus)
+    # noinspection NonAsciiCharacters
+    λ: int   # private key lambda: `λ(n) = lcm(p-1, q-1)` -- The Carmichael function of public modulus n
+    n: int   # public modulus: `n = p * q`, for private p, q prime
+    mu: int  # modular inverse of private key lambda: `λ(n)^-1 mod n`
+    n2: int  # cached square `n^2` of the public modulus `n`
 
-        self.λ = private_lambda
-        self.n = public_modulus
+    # noinspection NonAsciiCharacters
+    def __init__(self, private_prime_p: int, private_prime_q: int, validate: bool = False):
+        self.p = private_prime_p
+        self.q = private_prime_q
+
+        # Compute the private key: `λ(n) := lcm(p-1, q-1)` (i.e., the Carmichael function of n).
+        self.λ = self._calc_private_lambda(private_prime_p, private_prime_q)
+        self.n = private_prime_p * private_prime_q
+        self.n2 = self.n ** 2
+
+        if validate:
+            self._validate(private_prime_p, private_prime_q, self.n)
+
         # Calculate the modular inverse of the private key lambda: `λ(n)^-1 mod n`
-        self.mu = libnum.invmod(private_lambda, public_modulus)
+        self.mu = mod_inverse(self.λ, self.n)
 
     @staticmethod
-    def _validate(public_modulus: int) -> None:
-        # Verify the Paillier private key's public modulus is at least 2047 bits (i.e., MIN_KEY_SIZE - 1).
-        # Note: The modulus `n : = p*q`, where `p` and `q` are prime, can be between 2047 & 2048 bits, due to the
-        #   1024-bit primes `p` & `q` allowed values lying inside the range: [2^(1023) + 1, 2^(1024) - 1]
-        if public_modulus.bit_length() < (MIN_KEY_SIZE - 1):
+    def _calc_private_lambda(p: int, q: int) -> int:
+        """
+        Computes the private key's lambda value: `λ(n) = lcm(p-1, q-1)` (i.e., the Carmichael function of `n`) for a
+        Paillier key-pair, given the two prime factors `p` and `q` of the public modulus `n = p * q`.
+
+        :param p: The first prime factor `p` of the public modulus `n = p * q`.
+        :param q: The second prime factor `q` of the public modulus `n = p * q`.
+        :return: A Paillier private key's lambda value: `λ(n) = lcm(p-1, q-1)` (i.e., the Carmichael function of `n`).
+        """
+        return libnum.lcm(p - 1, q - 1)
+
+    @staticmethod
+    def _validate(private_prime_p: int, private_prime_q: int, public_modulus: int) -> None:
+        if private_prime_p == private_prime_q:
+            raise ValueError("Invalid Paillier private key -- prime factors 'p' and 'q' must be distinct.")
+
+        min_private_primes_size: int = MIN_KEY_SIZE // 2 - 1
+        if (
+            private_prime_p.bit_length() < min_private_primes_size
+                or private_prime_q.bit_length() < min_private_primes_size
+        ):
             raise ValueError(
-                f"Invalid Paillier private key -- public modulus must be at least [{MIN_KEY_SIZE - 1}] bits."
+                f"Invalid Paillier private key -- private prime factors 'p' and 'q' of the public modulus must be at"
+                f" least [{min_private_primes_size}] bits each."
+            )
+
+        if public_modulus.bit_length() < MIN_KEY_SIZE - 1:
+            raise ValueError(
+                f"Invalid Paillier private key -- public modulus must be at least [{MIN_KEY_SIZE - 2}] bits."
             )
 
     def validate_private_key(self) -> None:
@@ -62,14 +105,14 @@ class PaillierPrivateKey:
 
         :raises ValueError: If this Paillier private key is invalid.
         """
-        return self._validate(self.n)
+        return self._validate(self.p, self.q, self.n)
 
     def __str__(self) -> str:
         """
         Returns a base64-based encoding of this Paillier private key, which uses the following format:
             `{private_lambda_base64}:{public_modulus_base64}`
         """
-        return self.encode_to_base64()
+        return self._encode_to_base64()
 
     def __repr__(self) -> str:
         """
@@ -77,12 +120,12 @@ class PaillierPrivateKey:
             `PaillierPrivateKey(λ, n)='{private_lambda_base64}:{public_modulus_base64}'`
         """
         return (
-            f"PaillierPrivateKey(λ, n)='{self.encode_to_base64()}'"
+            f"PaillierPrivateKey(λ, n)='{self._encode_to_base64()}'"
         )
 
     # noinspection DuplicatedCode
     @classmethod
-    def from_base64_encoding(cls, encoded_private_key: str) -> PaillierPrivateKey:
+    def _decode_from_base64(cls, encoded_private_key: str) -> PaillierPrivateKey:
         parsed_fields: list[str] = encoded_private_key.split(':')
         if len(parsed_fields) != 2:
             raise ValueError(
@@ -90,27 +133,19 @@ class PaillierPrivateKey:
                 f" [fields_count={len(parsed_fields)}]"
             )
 
-        private_lambda_base64, public_modulus_base64 = parsed_fields
+        private_prime_p_base64, private_prime_q_base64 = parsed_fields
 
         try:
-            private_lambda: int = number.bytes_to_long(
-                base64.b64decode(private_lambda_base64, validate=True)
+            private_prime_p: int = number.bytes_to_long(
+                base64.b64decode(private_prime_p_base64, validate=True)
             )
-            public_modulus: int = number.bytes_to_long(
-                base64.b64decode(public_modulus_base64, validate=True)
+            private_prime_q: int = number.bytes_to_long(
+                base64.b64decode(private_prime_q_base64, validate=True)
             )
         except binascii.Error as b64ex:
             raise ValueError(f"Invalid base64 encoding for Paillier private key -- exception: {b64ex}")
         else:
-            return cls(private_lambda, public_modulus)
-
-    @property
-    def n2(self) -> int:
-        # Lazily compute n^2 and cache the result, on first access.
-        if self._n2 is None:
-            self._n2 = self.n ** 2
-
-        return self._n2
+            return cls(private_prime_p, private_prime_q, validate=True)
 
     def private_lambda(self) -> int:
         return self.λ
@@ -124,20 +159,355 @@ class PaillierPrivateKey:
     def public_modulus_squared(self) -> int:
         return self.n2
 
-    def encode_to_base64(self) -> str:
+    def export_private_key(
+            self,
+            passphrase: str | None,
+            pbkdf2_iterations: int = OWASP_PBKDF2_SHA256_ITERATIONS,  # default: 600,000 per OWASP 2023 guidelines
+            hmac_hash_algorithm: str = DEFAULT_HMAC_HASH_ALGORITHM,   # default: HMAC-SHA3-256
+            salt_size_bytes: int = DEFAULT_PKCS8_HMAC_SALT_BYTES,     # default: 32 bytes (256 bits)
+            aes_key_size_bytes: int = DEFAULT_PKCS8_AES_KEY_BYTES     # default: AES-128 (16 bytes)
+    ) -> str:
+        """
+        Exports this Paillier private key as a PKCS#8 encrypted private key, using the provided passphrase for
+        password-based key-wrap encryption using PBKDF2 for symmetric (AES) key derivation and AES-CBC for encryption
+        of the encoded Paillier private key; or simply encodes the private key to a base64-based string encoding, if no
+        passphrase is provided.
+
+        :param passphrase: a passphrase to use in encrypting this private key, using PKCS#8 password-based key-wrap
+               encryption; or None if the private key should only be encoded to a base64-based string encoding.
+        :param pbkdf2_iterations: the number of iterations to use in the PBKDF2 key derivation function for symmetric
+               key-wrap encryption (default: `OWASP_PBKDF2_SHA256_ITERATIONS` per OWASP 2023 guidelines).
+        :param hmac_hash_algorithm: the cryptographic hash algorithm to be used with HMAC in the PBKDF2 key derivation
+               function for symmetric key-wrap encryption (default: `DEFAULT_HMAC_HASH_ALGORITHM`).
+        :param salt_size_bytes: the size of the random salt value to be used in the PBKDF2 key derivation function for
+               symmetric key-wrap encryption (default: `DEFAULT_PKCS8_HMAC_SALT_BYTES`).
+        :param aes_key_size_bytes: the size of the AES key to be used in the AES-CBC encryption of the encoded private
+               key (default: `DEFAULT_PKCS8_AES_KEY_BYTES`).
+        :return: the PKCS#8 encrypted private key as a string-encoded representation, which includes PBKDF2 parameters
+                 and the HMAC salt necessary for decrypting the private key.
+        :raises ValueError: if the passphrase is too short for PKCS#8 encryption (i.e., < `MIN_PKCS8_PASSPHRASE_LENGTH`
+                characters), if provided.
+        """
+        encoded_private_key: bytes = self._encode_to_base64().encode('utf-8')
+
+        if passphrase is not None:
+            if len(passphrase) < MIN_PKCS8_PASSPHRASE_LENGTH:
+                raise ValueError(
+                    f"Unsupported passphrase length [{len(passphrase)}] for PKCS#8-based Paillier private key"
+                    f" encryption -- minimum length (chars.): {MIN_PKCS8_PASSPHRASE_LENGTH}"
+                )
+
+            # Encrypt encoded private key using PKCS#8 password-based encryption, using PBKDF2 for key-wrap (symmetric)
+            # key derivation and AES-CBC for encryption (e.g., PBKDF2 w/ HMAC-SHA3-256 & AES-128-CBC by default).
+            encrypted_private_key_asn1_der, pbkdf2_params = self._pkcs8_encrypt_encoded_private_key(
+                encoded_private_key,
+                passphrase.encode('utf-8'),
+                pbkdf2_iterations=pbkdf2_iterations,
+                hmac_hash_algorithm=hmac_hash_algorithm,
+                salt_size_bytes=salt_size_bytes,
+                aes_key_size_bytes=aes_key_size_bytes
+            )
+
+            return self._encode_pkcs8_encrypted_private_key(encrypted_private_key_asn1_der, pbkdf2_params)
+        else:  # no passphrase provided
+            # Encode private key to ASN.1 DER format (using a PKCS#8 container), but don't encrypt the private key.
+            encoded_private_key_asn1_der: bytes = self._pkcs8_encode_private_key(encoded_private_key)
+
+            # Return the ASN.1 DER encoded private key as a base64-encoded string.
+            return base64.b64encode(encoded_private_key_asn1_der).decode('utf-8')
+
+    @staticmethod
+    def _pkcs8_encode_private_key(
+        encoded_private_key: bytes
+    ) -> bytes:
+        """
+        Encodes a Paillier private key in a PKCS#8 container using ASN.1 DER format, but without any encryption.
+
+        :param encoded_private_key: a string-encoding of the Paillier private key to be encrypted, which uses
+               base64-encoded fields for the private key's prime factors `p` and `q` (separated by a colon ':'
+               delimiter).
+        :return: the PKCS#8 encoded private key in the binary ASN.1 DER format.
+        """
+
+        # Note: The standard RSA OID is used here as a placeholder for Paillier private keys, as there is no specific
+        #   standardized ASN.1 OID for Paillier private keys, as of the time of writing (2024), and Paillier private
+        #   keys are actually fully compatible with conventional RSA private keys, when using the two private prime
+        #   factors `p` & `q` of the public modulus `n` as the private key's components (i.e., as opposed to the
+        #   Paillier-specific private lambda-based representation).
+        rsa_oid: str = RSA_OID
+
+        return PKCS8.wrap(
+            private_key=encoded_private_key,
+            key_oid=rsa_oid,
+            passphrase=None,
+            protection=None
+        )
+
+    @staticmethod
+    def _pkcs8_encrypt_encoded_private_key(
+            encoded_private_key: bytes,
+            passphrase: bytes,
+            pbkdf2_iterations: int = OWASP_PBKDF2_SHA256_ITERATIONS,
+            hmac_hash_algorithm: str = DEFAULT_HMAC_HASH_ALGORITHM,  # default: HMAC-SHA3-256
+            salt_size_bytes: int = DEFAULT_PKCS8_HMAC_SALT_BYTES,    # default: 32 bytes (256 bits)
+            aes_key_size_bytes: int = DEFAULT_PKCS8_AES_KEY_BYTES    # default: AES-128 key size (16 bytes)
+    ) -> (bytes, dict[str, int]):
+        """
+        Encrypts the base64-encoded Paillier private key using PKCS#8 password-based key-wrap encryption, using PBKDF2
+        for password-based symmetric (AES) key derivation and AES-CBC for encryption of the provided encoded private
+        key, returning a string encoding of the encrypted private key (including PBKDF2 parameters and a salt value
+        required for decryption).
+
+        :param encoded_private_key: a string-encoding of the Paillier private key to be encrypted, which uses
+               base64-encoded fields for the private key's prime factors `p` and `q` (separated by a colon ':'
+               delimiter).
+        :param passphrase: a passphrase to use in encrypting this private key, using PKCS#8 password-based key-wrap
+               encryption; or None if the private key should only be encoded to a base64-based string encoding.
+        :param pbkdf2_iterations: the number of iterations to use in the PBKDF2 key derivation function for symmetric
+               key-wrap encryption (default: `OWASP_PBKDF2_SHA256_ITERATIONS` per OWASP 2023 guidelines).
+        :param hmac_hash_algorithm: the cryptographic hash algorithm to be used with HMAC in the PBKDF2 key derivation
+               function for symmetric key-wrap encryption (default: `DEFAULT_HMAC_HASH_ALGORITHM`).
+        :param salt_size_bytes: the size of the random salt value to be used in the PBKDF2 key derivation function for
+               symmetric key-wrap encryption (default: `DEFAULT_PKCS8_HMAC_SALT_BYTES`).
+        :param aes_key_size_bytes: the size of the AES key to be used in the AES-CBC encryption of the encoded private
+               key (default: `DEFAULT_PKCS8_AES_KEY_BYTES`).
+        :return: the PKCS#8 encrypted private key in the binary ASN.1 DER format, along with a dictionary containing the
+                 PBKDF2 parameters used for symmetric key derivation (i.e., the number of iterations & size of the
+                 random salt used).
+        """
+        supported_PBKDF2_profiles: set[str] = PaillierPrivateKey._supported_pbkdf2_profiles()
+
+        aes_key_size_bits: int = aes_key_size_bytes * 8
+        pbkdf2_profile: str = f"PBKDF2With{hmac_hash_algorithm}AndAES{aes_key_size_bits}-CBC"
+
+        if pbkdf2_profile not in supported_PBKDF2_profiles:
+            raise ValueError(
+                f"Unsupported PKCS#8 KDF profile: '{pbkdf2_profile}' for password-based key-wrap encryption of Paillier"
+                f" private keys -- supported profiles: {supported_PBKDF2_profiles}"
+            )
+
+        # PBKDF2 parameters used for PKCS#8-based key-wrap encryption.
+        pbkdf2_params: dict[str, int] = {
+            'iteration_count': pbkdf2_iterations,  # KDF iterations for PKCS#8 key-wrap encryption
+            'salt_size': salt_size_bytes           # size of random salt for use by KDF
+        }
+
+        # Note: The standard RSA OID is used here as a placeholder for Paillier private keys, as there is no specific
+        #   standardized ASN.1 OID for Paillier private keys, as of the time of writing (2024), and Paillier private
+        #   keys are actually fully compatible with conventional RSA private keys, when using the two private prime
+        #   factors `p` & `q` of the public modulus `n` as the private key's components (i.e., as opposed to the
+        #   Paillier-specific private lambda-based representation).
+        rsa_oid: str = RSA_OID
+
+        return PKCS8.wrap(
+            private_key=encoded_private_key,
+            key_oid=rsa_oid,
+            passphrase=passphrase,
+            protection=pbkdf2_profile,
+            prot_params=pbkdf2_params
+        ), pbkdf2_params
+
+    @staticmethod
+    def _encode_pkcs8_encrypted_private_key(
+            encrypted_private_key_asn1_der: bytes,
+            pbkdf2_params: dict[str, int]
+    ) -> str:
+        """
+        Encodes a PKCS#8 encrypted private key, including the PBKDF2 parameters and HMAC salt value required for
+        successful decryption, in a string format that can be stored or transmitted securely.
+
+        Uses the string encoding format, as defined in the Password Hashing Competition's string format spec:
+        https://github.com/P-H-C/phc-string-format/blob/master/phc-sf-spec.md
+
+        :param encrypted_private_key_asn1_der: an encrypted private key wrapped in a PKCS#8 container, and encoded in
+               the (ASN.1) DER binary format, which includes the PBKDF2 (HMAC) salt value used during (symmetric)
+               key-wrap encryption key derivation.
+        :param pbkdf2_params: the PBKDF2 parameters used for symmetric key derivation, including the number of
+               iterations and the size of the random salt value.
+        :return: a string-encoded representation of the PKCS#8 encrypted private key, including PBKDF2 parameters
+                 necessary for successful decryption.
+        """
+        VERSION: int = 1
+        encrypted_private_key_base64: str = base64.b64encode(encrypted_private_key_asn1_der).decode('utf-8')
+
+        pbkdf2_iterations: int = pbkdf2_params['iteration_count']
+        salt_size: int = pbkdf2_params['salt_size']
+
+        return (
+            f"$pbkdf2$v={VERSION}$iterations={pbkdf2_iterations},salt_size={salt_size}${encrypted_private_key_base64}"
+        )
+
+    @staticmethod
+    def _supported_pbkdf2_profiles() -> set[str]:
+        """
+        Returns the set of supported PKCS#8 password-based key-wrap encryption profiles, using PBKDF2 for symmetric
+        (AES) key derivation and AES-CBC for encryption of the encoded Paillier private key.
+
+        Supported profiles currently include PBKDF2 using HMAC with SHA-2 family (SHA-224, SHA-256, SHA-384, SHA-512)
+        and SHA-3 family (SHA3-224, SHA3-256, SHA3-384, SHA3-512) cryptographic hashes, and AES-CBC encryption using key
+        sizes of 128, 192 or 256 bits. Supported AES key sizes have been chosen based on the hash algorithm's output
+        (e.g., AES-128 for SHA-256, AES-192 for SHA-384, and AES-256 for SHA-512).
+
+        :return: the set of supported PKCS#8 password-based key-wrap encryption profiles.
+        """
+        return {
+            PKCS8_KDF_PBKDF2_SHA224_AES128_CBC,
+            PKCS8_KDF_PBKDF2_SHA256_AES128_CBC,
+            PKCS8_KDF_PBKDF2_SHA384_AES192_CBC,
+            PKCS8_KDF_PBKDF2_SHA512_AES256_CBC,
+            PKCS8_KDF_PBKDF2_SHA3_224_AES128_CBC,
+            PKCS8_KDF_PBKDF2_SHA3_256_AES128_CBC,
+            PKCS8_KDF_PBKDF2_SHA3_384_AES192_CBC,
+            PKCS8_KDF_PBKDF2_SHA3_512_AES256_CBC
+        }
+
+    @classmethod
+    def import_private_key(
+            cls,
+            encoded_private_key: str,
+            passphrase: str | None = None
+    ) -> PaillierPrivateKey:
+        """
+        Imports a Paillier private key from a PKCS#8 encrypted private key, using the provided passphrase for
+        password-based key-wrap decryption of the private key.
+
+        :param encoded_private_key: Paillier private key to be imported, provided in a string encoding, which may be
+               PKCS#8 encrypted.
+        :param passphrase: passphrase to use for decrypting a PKCS#8 encrypted private key; or None if the private
+               key is not encrypted.
+        :return: a successfully decoded and/or decrypted Paillier private key.
+        :raises ValueError: if the encoded private key is invalidly encoded, or is encrypted and could not be decrypted.
+        """
+        if passphrase is not None:
+            encrypted_private_key_asn1_der, pbkdf2_params = cls._decode_pkcs8_encrypted_private_key(
+                encoded_private_key
+            )
+
+            # Decrypt PKCS#8 encrypted Paillier private key.
+            private_key_base64_bytes: bytes = cls._pkcs8_decrypt_private_key(
+                encrypted_private_key_asn1_der,
+                passphrase
+            )
+
+            return cls._decode_from_base64(private_key_base64_bytes.decode('utf-8'))
+        else:  # no passphrase provided
+            # Decode the base64-encoded ASN.1 DER byte string of the Paillier private key, to obtain the DER bytes.
+            encoded_private_key_bytes: bytes = base64.b64decode(encoded_private_key)
+
+            # Decode an ASN.1 DER-encoded Paillier private key, which was not encrypted.
+            decoded_private_key: bytes = cls._decode_pkcs8_unencrypted_private_key(encoded_private_key_bytes)
+
+            return cls._decode_from_base64(decoded_private_key.decode('utf-8'))
+
+    @staticmethod
+    def _pkcs8_decrypt_private_key(encrypted_private_key_asn1_der: bytes, passphrase: str) -> bytes:
+        """
+        Decrypts a PKCS#8 encrypted Paillier private key, using the provided passphrase for password-based (PBKDF2)
+        key-wrap decryption of the private key.
+        """
+        oid, private_key, assoc_params = PKCS8.unwrap(encrypted_private_key_asn1_der, passphrase)
+
+        return private_key
+
+    @staticmethod
+    def _decode_pkcs8_unencrypted_private_key(encoded_private_key_asn1_der: bytes) -> bytes:
+        oid, private_key, assoc_params = PKCS8.unwrap(encoded_private_key_asn1_der, passphrase=None)
+
+        return private_key
+
+    @staticmethod
+    def _decode_pkcs8_encrypted_private_key(encrypted_private_key: str) -> (bytes, dict[str, int]):
+        """
+        Decodes a PKCS#8 encrypted Paillier private key, including the PBKDF2 parameters used for symmetric key
+        derivation, from a string-encoded representation.
+
+        The particular string encoding used is based on the Argon2-related string encoding format (i.e., that used in
+        the Password Hashing Competition), which includes the PBKDF2 parameters necessary for re-derivation of the
+        symmetric key required for decryption. The encrypted private key field is a base64-encoded ASN.1 DER byte
+        string.
+
+        The encoded private key format is expected to be in the following format:
+            `$pbkdf2$v={VERSION}$iterations={ITERATIONS}${ENCRYPTED_PRIVATE_KEY_ASN1_DER_BASE64}`
+
+        :see: `Password Hashing Competition: String Format <https://github.com/P-H-C/phc-string-format/blob/master/phc-sf-spec.md>`_
+
+        :param encrypted_private_key: a string-encoded representation of the PKCS#8 encrypted private key, which
+               includes PBKDF2 parameters necessary for re-derivation of the symmetric key required for decryption.
+        :return: a tuple containing the encrypted private key (as an ASN.1 DER-encoded byte string) and the PBKDF2
+                 parameters used for re-derivation of the symmetric key for decryption.
+        :raises ValueError: if the string-encoded PKCS#8 encrypted private key is invalidly formatted.
+        """
+        KDF_ALGO_POS: int = 0
+        ENCODING_VERSION_POS: int = 1
+        KDF_PARAMS_POS: int = 2
+        ENCRYPTED_KEY_POS: int = 3
+
+        EXPECTED_FIELDS_COUNT: int = 4
+        SUPPORTED_KDF_ALGOS: set[str] = {'pbkdf2'}
+        SUPPORTED_ENCODING_VERSIONS: set[int] = {1}
+
+        fields: list[str] = encrypted_private_key.lstrip('$').split('$')
+        if len(fields) != EXPECTED_FIELDS_COUNT:
+            raise ValueError(
+                f"Invalid Paillier encrypted private key format -- expected 4 fields, but found {len(fields)}."
+            )
+
+        encoding_version_param: list[str] = fields[ENCODING_VERSION_POS].split('=')
+        if len(encoding_version_param) != 2 or encoding_version_param[0] != 'v':
+            raise ValueError(
+                f"Invalid Paillier encrypted private key format -- expected 'v' version field, but found:"
+                f" {fields[ENCODING_VERSION_POS]}"
+            )
+        elif int(encoding_version_param[1]) not in SUPPORTED_ENCODING_VERSIONS:
+            raise ValueError(
+                f"Unsupported Paillier encrypted private key encoding version:"
+                f" '{encoding_version_param[ENCODING_VERSION_POS]}' -- supported encoding versions: {SUPPORTED_ENCODING_VERSIONS}"
+            )
+
+        # Ensure the key-derivation function (KDF) is supported (i.e., that it is PBKDF2).
+        if fields[KDF_ALGO_POS] not in SUPPORTED_KDF_ALGOS:
+            raise ValueError(
+                f"Unsupported PKCS#8 password-based key-wrap encryption format: '{fields[KDF_ALGO_POS]}' for Paillier"
+                f" private key -- expected KDF in: {SUPPORTED_KDF_ALGOS}"
+            )
+
+        pbkdf2_params: dict[str, int] = {}
+        try:
+            # Parse the PBKDF2 parameters into key-value pairs:
+            params: list[str] = fields[KDF_PARAMS_POS].split(',')
+            for param in params:
+                key, value = param.split('=')
+                pbkdf2_params[key] = int(value)
+        except KeyError as kex:
+            raise ValueError(
+                f"Invalid Paillier encrypted private key format -- invalidly formatted KDF parameter(s)"
+                f" -- exception: {kex}"
+            ) from kex
+        except ValueError as vex:
+            raise ValueError(
+                f"Invalid Paillier encrypted private key format -- invalidly formatted KDF parameter(s) or parameter"
+                f" value(s) -- exception: {vex}"
+            ) from vex
+
+        # Extract the base64-encoded ASN.1 DER byte string of the encrypted private key.
+        encrypted_private_key: bytes = base64.b64decode(fields[ENCRYPTED_KEY_POS])
+
+        return encrypted_private_key, pbkdf2_params
+
+    def _encode_to_base64(self) -> str:
         """
         Returns a base64-based encoding of this Paillier private key, which uses the following format:
-            `{private_lambda_base64}:{public_modulus_base64}`
+            `{private_prime_p_base64}:{private_prime_q_base64}`
         """
-        private_lambda_base64: str = base64.b64encode(
-            number.long_to_bytes(self.λ)
+        private_prime_p_base64: str = base64.b64encode(
+            number.long_to_bytes(self.p)
         ).decode('utf-8')
 
-        public_modulus_base64: str = base64.b64encode(
-            number.long_to_bytes(self.n)
+        private_prime_q_base64: str = base64.b64encode(
+            number.long_to_bytes(self.q)
         ).decode('utf-8')
 
-        return f"{private_lambda_base64}:{public_modulus_base64}"
+        return f"{private_prime_p_base64}:{private_prime_q_base64}"
 
     def decrypt(self, ciphertext: EncryptedUnsignedInteger) -> int:
         """
@@ -170,7 +540,7 @@ class PaillierPrivateKey:
         This formula produces an integer result for all u ∈ S_n, where S_n := {u < n^2 | u ≡ 1 mod n}.
         :raises AssertionError: If the input `u` is not in the range [1, n^2) or is not congruent to 1 modulo `n`.
         """
-        # Ensure u ∈ Z_{n^2}^* (i.e., u is a non-zero element of the multiplicative group of integers modulo n^2).
+        # Ensure u ∈ Z_{n^2}^* (i.e., u is an element of the multiplicative group of integers modulo n^2).
         assert 0 < u < n ** 2, "u must be in the range [1, n^2)."
         # Ensure that L(u, n) is well-defined (i.e., u ≡ 1 mod n).
         assert u % n == 1, "u must be congruent to 1 modulo n."
@@ -180,9 +550,9 @@ class PaillierPrivateKey:
 
 @dataclass
 class PaillierPublicKey:
-    n: int                 # public modulus: `n = p * q`, for private p, q prime
-    g: int                 # public generator `g ∈ B` of the set of n-th residues modulo n^2 (i.e., `g` generates CR[n])
-    _n2: int | None = None
+    n: int   # public modulus: `n = p * q`, for private p, q prime
+    g: int   # public generator `g ∈ B` of the set of n-th residues modulo n^2 (i.e., `g` generates CR[n])
+    n2: int  # cached square `n^2` of the public modulus `n`
 
     def __init__(self, public_modulus: int, public_generator: int, validate: bool = False):
         if validate:
@@ -190,27 +560,15 @@ class PaillierPublicKey:
 
         self.n = public_modulus
         self.g = public_generator
+        self.n2 = public_modulus ** 2
 
-    @staticmethod
-    def _validate(public_modulus: int, public_generator: int) -> None:
-        # Verify the Paillier public key's modulus is at least 2047 bits (i.e., MIN_KEY_SIZE - 1).
-        # Note: The modulus `n : = p*q`, where `p` and `q` are prime, can be between 2047 & 2048 bits, due to the
-        #   1024-bit primes `p` & `q` allowed values lying inside the range: [2^(1023) + 1, 2^(1024) - 1]
-        if public_modulus.bit_length() < (MIN_KEY_SIZE - 1):
-            raise ValueError(
-                f"Invalid Paillier public key -- public modulus must be at least [{MIN_KEY_SIZE - 1}] bits."
-            )
-
-        # Require generator `g` to equal `n + 1`, as this impl. uses this specific generator as an optimization.
-        if public_generator != public_modulus + 1:
-            raise ValueError(
-                "Invalid Paillier public key -- the public generator 'g' must be equal to: n + 1, where 'n' is the"
-                " public modulus."
-            )
+    @classmethod
+    def import_public_key(cls, encoded_public_key: str) -> PaillierPublicKey:
+        return cls._decode_from_base64(encoded_public_key)
 
     # noinspection DuplicatedCode
     @classmethod
-    def from_base64_encoding(cls, encoded_public_key: str) -> PaillierPublicKey:
+    def _decode_from_base64(cls, encoded_public_key: str) -> PaillierPublicKey:
         parsed_fields: list[str] = encoded_public_key.split(':')
         if len(parsed_fields) != 2:
             raise ValueError(
@@ -247,12 +605,29 @@ class PaillierPublicKey:
         """
         self._validate(self.n, self.g)
 
+    @staticmethod
+    def _validate(public_modulus: int, public_generator: int) -> None:
+        # Verify the Paillier public key's modulus is at least 2047 bits (i.e., MIN_KEY_SIZE - 1).
+        # Note: The modulus `n : = p*q`, where `p` and `q` are prime, can be between 2047 & 2048 bits, due to the
+        #   1024-bit primes `p` & `q` allowed values lying inside the range: [2^(1023) + 1, 2^(1024) - 1]
+        if public_modulus.bit_length() < (MIN_KEY_SIZE - 1):
+            raise ValueError(
+                f"Invalid Paillier public key -- public modulus must be at least [{MIN_KEY_SIZE - 1}] bits."
+            )
+
+        # Require generator `g` to equal `n + 1`, as this impl. uses this specific generator as an optimization.
+        if public_generator != public_modulus + 1:
+            raise ValueError(
+                "Unsupported Paillier public key -- the public generator 'g' must be equal to 'n + 1', where 'n' is the"
+                " public modulus."
+            )
+
     def __str__(self) -> str:
         """
         Returns a base64-based encoding of this Paillier public key, which uses the following format:
             `{public_modulus_base64}:{public_generator_base64}`
         """
-        return self.encode_to_base64()
+        return self._encode_to_base64()
 
     def __repr__(self) -> str:
         """
@@ -260,16 +635,8 @@ class PaillierPublicKey:
             `PaillierPublicKey(n, g)='{public_modulus_base64}:{public_generator_base64}'`
         """
         return (
-            f"PaillierPublicKey(n, g)='{self.encode_to_base64()}'"
+            f"PaillierPublicKey(n, g)='{self._encode_to_base64()}'"
         )
-
-    @property
-    def n2(self) -> int:
-        # Lazily compute n^2 and cache the result, on first access.
-        if self._n2 is None:
-            self._n2 = self.n ** 2
-
-        return self._n2
 
     def public_modulus(self) -> int:
         return self.n
@@ -280,7 +647,10 @@ class PaillierPublicKey:
     def public_modulus_squared(self) -> int:
         return self.n2
 
-    def encode_to_base64(self) -> str:
+    def export_public_key(self) -> str:
+        return self._encode_to_base64()
+
+    def _encode_to_base64(self) -> str:
         """
         Returns a base64-based encoding of this Paillier public key, which uses the following format:
             `{public_modulus_base64}:{public_generator_base64}`
@@ -342,6 +712,8 @@ class PaillierKeyPair:
         if private_key.n != public_key.n:
             raise ValueError("Paillier public and private keys must have the same public modulus.")
 
+        private_key.validate_private_key()
+
         public_key.validate_public_key()
 
         # Verify: `g^λ == 1 mod n`, where g is the public generator, n := p * q is the public modulus
@@ -372,29 +744,14 @@ class PaillierKeyPair:
         # aren't "too close together" (i.e., `|p - q| >= nroot(n, 4)`), and their product: `n = p * q`.
         p, q, n = cls._generate_primes(prime_factor_size_bits)
 
-        # Compute the private key: `λ(n) := lcm(p-1, q-1)` (i.e., the Carmichael function of n).
-        private_lambda: int = cls._calc_private_lambda(p, q)
-
         # Choose `g = n + 1`, a known generator `g ∈ B` of the set of n-th residues modulo n^2, where `B` := the set of
         # elements of Z_{n^2}^* with order `n * 𝜶`, for 𝜶 ∈ [1, λ(n)].
         g = n + 1
 
-        priv_key = PaillierPrivateKey(private_lambda, n)
+        priv_key = PaillierPrivateKey(p, q)
         pub_key = PaillierPublicKey(n, g)
 
         return cls(pub_key, priv_key)
-
-    @staticmethod
-    def _calc_private_lambda(p: int, q: int) -> int:
-        """
-        Computes the private key's lambda value: `λ(n) = lcm(p-1, q-1)` (i.e., the Carmichael function of `n`) for a
-        Paillier key-pair, given the two prime factors `p` and `q` of the public modulus `n = p * q`.
-
-        :param p: The first prime factor `p` of the public modulus `n = p * q`.
-        :param q: The second prime factor `q` of the public modulus `n = p * q`.
-        :return: A Paillier private key's lambda value: `λ(n) = lcm(p-1, q-1)` (i.e., the Carmichael function of `n`).
-        """
-        return libnum.lcm(p - 1, q - 1)
 
     @staticmethod
     def _generate_primes(size_bits: int) -> (int, int, int):
@@ -438,11 +795,11 @@ class PaillierKeyPair:
         """
         self._validate(self.public_key, self.private_key)
 
-    def encode_private_key(self) -> str:
-        return self.private_key.encode_to_base64()
+    def export_private_key(self, passphrase: str | None) -> str:
+        return self.private_key.export_private_key(passphrase)
 
-    def encode_public_key(self) -> str:
-        return self.public_key.encode_to_base64()
+    def export_public_key(self) -> str:
+        return self.public_key.export_public_key()
 
 
 @dataclass
@@ -481,7 +838,7 @@ class EncryptedUnsignedInteger:
     def __repr__(self) -> str:
         return (
             f"EncryptedUnsignedInteger(ciphertext_base64='{self.encode_to_base64()}',"
-            f" public_key='{self.public_key.encode_to_base64()}')"
+            f" public_key='{self.public_key._encode_to_base64()}')"
         )
 
     def __add__(self, other: EncryptedUnsignedInteger | int) -> EncryptedUnsignedInteger:
