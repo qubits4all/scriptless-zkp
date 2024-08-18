@@ -36,6 +36,7 @@ from scriptless_zkp.number_theory import random_strong_prime, mod_inverse
 
 MIN_KEY_SIZE: int = 2048      # Note: Min. key-size for use in Y. Lindell's 2-Party ECDSA protocol w/ 256-bit ECC keys.
 DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key size of 3072 bits.
+RSA_OID: str = '1.2.840.113549.1.1.1'  # RSA OID used as a placeholder for Paillier private keys (no specific OID).
 
 
 @dataclass
@@ -187,7 +188,7 @@ class PaillierPrivateKey:
         :raises ValueError: if the passphrase is too short for PKCS#8 encryption (i.e., < `MIN_PKCS8_PASSPHRASE_LENGTH`
                 characters), if provided.
         """
-        encoded_key_base64: str = self._encode_to_base64()
+        encoded_private_key: bytes = self._encode_to_base64().encode('utf-8')
 
         if passphrase is not None:
             if len(passphrase) < MIN_PKCS8_PASSPHRASE_LENGTH:
@@ -199,7 +200,7 @@ class PaillierPrivateKey:
             # Encrypt encoded private key using PKCS#8 password-based encryption, using PBKDF2 for key-wrap (symmetric)
             # key derivation and AES-CBC for encryption (e.g., PBKDF2 w/ HMAC-SHA3-256 & AES-128-CBC by default).
             encrypted_private_key_asn1_der, pbkdf2_params = self._pkcs8_encrypt_encoded_private_key(
-                encoded_key_base64.encode('utf-8'),
+                encoded_private_key,
                 passphrase.encode('utf-8'),
                 pbkdf2_iterations=pbkdf2_iterations,
                 hmac_hash_algorithm=hmac_hash_algorithm,
@@ -208,12 +209,43 @@ class PaillierPrivateKey:
             )
 
             return self._encode_pkcs8_encrypted_private_key(encrypted_private_key_asn1_der, pbkdf2_params)
-        else:
-            return encoded_key_base64
+        else:  # no passphrase provided
+            # Encode private key to ASN.1 DER format (using a PKCS#8 container), but don't encrypt the private key.
+            encoded_private_key_asn1_der: bytes = self._pkcs8_encode_private_key(encoded_private_key)
+
+            # Return the ASN.1 DER encoded private key as a base64-encoded string.
+            return base64.b64encode(encoded_private_key_asn1_der).decode('utf-8')
+
+    @staticmethod
+    def _pkcs8_encode_private_key(
+        encoded_private_key: bytes
+    ) -> bytes:
+        """
+        Encodes a Paillier private key in a PKCS#8 container using ASN.1 DER format, but without any encryption.
+
+        :param encoded_private_key: a string-encoding of the Paillier private key to be encrypted, which uses
+               base64-encoded fields for the private key's prime factors `p` and `q` (separated by a colon ':'
+               delimiter).
+        :return: the PKCS#8 encoded private key in the binary ASN.1 DER format.
+        """
+
+        # Note: The standard RSA OID is used here as a placeholder for Paillier private keys, as there is no specific
+        #   standardized ASN.1 OID for Paillier private keys, as of the time of writing (2024), and Paillier private
+        #   keys are actually fully compatible with conventional RSA private keys, when using the two private prime
+        #   factors `p` & `q` of the public modulus `n` as the private key's components (i.e., as opposed to the
+        #   Paillier-specific private lambda-based representation).
+        rsa_oid: str = RSA_OID
+
+        return PKCS8.wrap(
+            private_key=encoded_private_key,
+            key_oid=rsa_oid,
+            passphrase=None,
+            protection=None
+        )
 
     @staticmethod
     def _pkcs8_encrypt_encoded_private_key(
-            private_key_base64: bytes,
+            encoded_private_key: bytes,
             passphrase: bytes,
             pbkdf2_iterations: int = OWASP_PBKDF2_SHA256_ITERATIONS,
             hmac_hash_algorithm: str = DEFAULT_HMAC_HASH_ALGORITHM,  # default: HMAC-SHA3-256
@@ -226,7 +258,9 @@ class PaillierPrivateKey:
         key, returning a string encoding of the encrypted private key (including PBKDF2 parameters and a salt value
         required for decryption).
 
-        :param private_key_base64: a base64-encoded representation of the Paillier private key to be encrypted.
+        :param encoded_private_key: a string-encoding of the Paillier private key to be encrypted, which uses
+               base64-encoded fields for the private key's prime factors `p` and `q` (separated by a colon ':'
+               delimiter).
         :param passphrase: a passphrase to use in encrypting this private key, using PKCS#8 password-based key-wrap
                encryption; or None if the private key should only be encoded to a base64-based string encoding.
         :param pbkdf2_iterations: the number of iterations to use in the PBKDF2 key derivation function for symmetric
@@ -263,10 +297,10 @@ class PaillierPrivateKey:
         #   keys are actually fully compatible with conventional RSA private keys, when using the two private prime
         #   factors `p` & `q` of the public modulus `n` as the private key's components (i.e., as opposed to the
         #   Paillier-specific private lambda-based representation).
-        rsa_oid: str = '1.2.840.113549.1.1.1'
+        rsa_oid: str = RSA_OID
 
         return PKCS8.wrap(
-            private_key=private_key_base64,
+            private_key=encoded_private_key,
             key_oid=rsa_oid,
             passphrase=passphrase,
             protection=pbkdf2_profile,
@@ -356,8 +390,14 @@ class PaillierPrivateKey:
             )
 
             return cls._decode_from_base64(private_key_base64_bytes.decode('utf-8'))
-        else:
-            return cls._decode_from_base64(encoded_private_key)
+        else:  # no passphrase provided
+            # Decode the base64-encoded ASN.1 DER byte string of the Paillier private key, to obtain the DER bytes.
+            encoded_private_key_bytes: bytes = base64.b64decode(encoded_private_key)
+
+            # Decode an ASN.1 DER-encoded Paillier private key, which was not encrypted.
+            decoded_private_key: bytes = cls._decode_pkcs8_unencrypted_private_key(encoded_private_key_bytes)
+
+            return cls._decode_from_base64(decoded_private_key.decode('utf-8'))
 
     @staticmethod
     def _pkcs8_decrypt_private_key(encrypted_private_key_asn1_der: bytes, passphrase: str) -> bytes:
@@ -366,6 +406,12 @@ class PaillierPrivateKey:
         key-wrap decryption of the private key.
         """
         oid, private_key, assoc_params = PKCS8.unwrap(encrypted_private_key_asn1_der, passphrase)
+
+        return private_key
+
+    @staticmethod
+    def _decode_pkcs8_unencrypted_private_key(encoded_private_key_asn1_der: bytes) -> bytes:
+        oid, private_key, assoc_params = PKCS8.unwrap(encoded_private_key_asn1_der, passphrase=None)
 
         return private_key
 
