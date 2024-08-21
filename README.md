@@ -32,7 +32,7 @@ all liability or warrantability related to its use.
 #### Elliptic Curve Cryptography (ECC) [[scriptless_zkp.ecc](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc)]
   - Support for prime-order elliptic curves (Weierstrass form) [`scriptless_zkp.ecc.weierstrass_curves`]
     - **NIST P-256** (`secp256r1`), **NIST P-384** (`secp384r1`), **NIST P-521** (`secp521r1`)
-  - Support derivation of effectively-independent ECC generator points [`scriptless_zkp.ecc.ecc_utils`]
+  - Support derivation of effectively-independent ECC generator points [`scriptless_zkp.ecc.generators`]
     - Generation of elliptic curve generator points for which _nobody_ knows the discrete logarithm w.r.t. the base
     point `G`.
 
@@ -41,6 +41,10 @@ all liability or warrantability related to its use.
 
 #### Cryptographic Commitments [[scriptless_zkp.commitments](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/commitments)]
   - **HMAC-based & Blake2b-based Keyed-Hash Commitments** [`scriptless_zkp.commitments.hmac_commitments`]
+
+#### Homomorphic Encryption (HE) [[scriptless_zkp.he](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/he)]
+  - **Paillier** (Additively) **Homomorphic Encryption** [`scriptless_zkp.he.paillier`]
+    - Support for Paillier encryption, decryption, and homomorphic operations (addition, multiplication by a scalar).
 
 #### Non-Interactive Zero-Knowledge (NIZK) Proofs (over Elliptic Curves) [[scriptless_zkp.ecc.zkp](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc/zkp)]
   - **NIZK Proofs of Knowledge** (PoKs) **of a Discrete Logarithm** [`scriptless_zkp.ecc.zkp.nizk_dlog_proof`]
@@ -54,24 +58,15 @@ all liability or warrantability related to its use.
     - Combines an NIZK proof and a cryptographic commitment to the proof & its public parameters, which is useful in
     multi-party protocols involving ZK proofs (e.g., for ensuring correct protocol execution by each party).
 
-
-### Coming Soon
-
-- ~~Non-Interactive Zero-Knowledge (NIZK) Proofs of Knowledge (PoKs) of Discrete Logarithms (over Elliptic
-Curves)~~
-- ~~NIZK Proofs of Knowledge (PoKs) of _Equal_ Discrete Logarithms
-(based on the Chaum-Pedersen protocol)~~
-- Revise Two-Party ECC Schnorr and NIZK PoKs of Discrete Log modules:
-  - To support additional prime-order elliptic curves:
-    - NIST P-384 (`secp384r1`)
-    - NIST P-521 (`secp521r1`)
-
-
 ### Planned Future Work:
 
 #### Cryptographic Commitments (ECC)
 - ~~Pedersen Commitments (over Elliptic Curves)~~
 - **Vector Pedersen Commitments** (over Elliptic Curves)
+
+#### Adaptor Signatures - ECC Schnorr
+- ~~Adaptor Signatures for ECC Schnorr (single-party)~~
+- **Two-Party Adaptor Signatures for ECC Schnorr**
 
 #### BIP-340 Compatible ECC Schnorr Signatures
 - Support **[BIP-340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki) (Bitcoin standard) compatible ECC Schnorr Signatures**
@@ -79,26 +74,23 @@ Curves)~~
     BIP-340 standard domain separation tags into the various cryptographic hash operations.
 - Support **BIP-340 compatible Two-Party ECC Schnorr Signatures**
 
-#### Adaptor Signatures - ECC Schnorr
-- ~~Adaptor Signatures for ECC Schnorr (single-party)~~
-- **Two-Party Adaptor Signatures for ECC Schnorr** (BIP-340 compatible)
-
 #### Adaptor Signatures - ECDSA
 - Prerequisites:
-  - **Paillier** (Additively) **Homomorphic Encryption**
+  - ~~**Paillier** (Additively) **Homomorphic Encryption**~~
   - **Zero-Knowledge Range Proofs** (based on Y. Lindell's [Paillier-based ZKP protocol](https://eprint.iacr.org/2017/552.pdf) (see: Appendix A))
 - **Two-Party ECDSA Signatures** (based on [Y. Lindell's protocol](https://eprint.iacr.org/2017/552.pdf))
 - **Two-Party Adaptor Signatures for ECDSA**
+
+#### Two-Party Digital Signatures & Non-Interactive Zero-Knowledge (NIZK) Proofs
+- Revise Two-Party ECC Schnorr and NIZK PoKs of Discrete Log modules:
+  - To support additional prime-order elliptic curves:
+    - NIST P-384 (`secp384r1`)
+    - NIST P-521 (`secp521r1`)
 
 #### Blockchain-Agnostic Protocols
 - Prerequisites:
   - **Verifiable Delay Functions** (VDFs) and **Verifiable Timed Discrete Logs** (VTDs)
 - **Universal Atomic Swaps** (UAS) protocol (based on [S.A. Thyagarajan, et al](https://eprint.iacr.org/2021/1612))
-
-#### Zero-Knowledge Contingent Payment (zkCP) Protocols
-- Prerequisites:
-  - **Zero-Knowledge Set Membership Proofs** (based on [Bulletproofs](https://eprint.iacr.org/2017/1066.pdf))
-  - **Zero-Knowledge Range Proofs** (based on [Bulletproofs](https://eprint.iacr.org/2017/1066.pdf))
 
 #### Secure Multi-Party Computation (MCP) protocols
 - **Oblivious Transfer** (OT)
