@@ -21,8 +21,8 @@ for verifying such two-party Schnorr signatures using the joint public key.
   verification via a joint public key.
 - Including distributed multi-party computation of a hardened joint public key & hardened public/private key-shares,
   with protection against public key-share subtraction attacks.
-- Both protocols feature detection of deviations from correct protocol operation by either party with abort, via ZKPs
-  with commitments.
+- Both protocols feature detection of deviations from correct protocol operation by either party with abort, via the
+  use of zero-knowledge proofs (ZKPs) with commitments.
 """
 from __future__ import annotations
 
