@@ -48,3 +48,40 @@ def random_nonnegative_integer(upper_limit_exclusive: int) -> int:
     :return: A random non-negative integer in the range: [0, upper_limit_exclusive)
     """
     return secrets.randbelow(upper_limit_exclusive)
+
+
+def random_integer_of_size(size_bits: int) -> int:
+    """
+    Generates a random integer of the specified bit-size.
+    :param size_bits: The number of bits to use for the random integer.
+    :return: A random integer of the specified bit-size.
+    """
+    if size_bits < 1:
+        raise ValueError("The bit-size must be a positive non-negative integer.")
+
+    return secrets.randbits(size_bits)
+
+
+def integer_to_bytes(value: int, byte_order: str = "big-endian") -> bytes:
+    """
+    Converts the specified integer to a byte array representation using the specified byte-order.
+    :param value: integer value to convert to a byte array.
+    :param byte_order: byte-order to use for the byte array: "big-endian" or "little-endian" (default: "big-endian")
+    :return: a byte array representation of the specified integer, using the specified byte-order.
+    """
+    # Calculate the number of bytes needed to represent the integer value.
+    num_bytes: int = value.bit_length() // 8 + (1 if value.bit_length() % 8 > 0 else 0)
+
+    # Convert & return the integer value to a byte array using the specified byte-order.
+    return value.to_bytes(length=num_bytes, byteorder="big" if byte_order == "big-endian" else "little")
+
+
+def bytes_to_integer(data: bytes, byte_order: str = "big-endian") -> int:
+    """
+    Converts the specified byte array to an integer value, using the specified byte-order.
+    :param data: byte array to convert to an integer value.
+    :param byte_order: byte-order to use for the byte array: "big-endian" or "little-endian" (default: "big-endian")
+    :return: an integer value representation of the specified byte array, using the specified byte-order.
+    """
+    # Convert & return the byte array to an integer value using the specified byte-order.
+    return int.from_bytes(data, byteorder="big" if byte_order == "big-endian" else "little")

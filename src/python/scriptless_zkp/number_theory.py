@@ -233,7 +233,7 @@ def random_prime_of_size(size_bits: int) -> int:
 def random_strong_prime(size_bits: int) -> int:
     """
     Generates a random "strong" prime number of the specified size in bits, specifically a prime `p` such that `p - 1`
-    `p + 1` both have at least one large prime factor.
+    and `p + 1` both have at least one large prime factor.
 
     :param size_bits: The number of bits to use in the prime number to be generated.
     :return: A random "strong" prime number of the specified bit size.
@@ -244,10 +244,10 @@ def random_strong_prime(size_bits: int) -> int:
 def random_safe_prime(size_bits: int) -> int:
     """
     Generates a random "safe" prime number of the specified size in bits, specifically a prime `p` such that
-    ``p = 2*q + 1``, where `q` is also prime (i.e., where ``q = (p - 1) / 2`` is prime). The associated prime `q`,
-    where ``q = (p-1)/2``, is thereby a Sophie Germain prime.
+    ``p = 2*q + 1``, where `q` is also prime. The associated prime `q`, where ``q = (p-1)/2``, is thereby a Sophie
+    Germain prime.
 
-    This function generates a random (size_bits-1)-bit (strongly) probable prime `q` (verified with Miller-Rabin
+    This function generates a random (size_bits-1)-bit (strongly) probable prime `q` (verified with the Miller-Rabin
     primality test), and then applies Pocklington's criterion for primality to test whether ``p = 2*q + 1`` is prime,
     the latter of which requires only a single-round Fermat primality test for the base 2 in this case.
 

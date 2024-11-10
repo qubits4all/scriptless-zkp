@@ -838,7 +838,7 @@ class EncryptedUnsignedInteger:
     def __repr__(self) -> str:
         return (
             f"EncryptedUnsignedInteger(ciphertext_base64='{self.encode_to_base64()}',"
-            f" public_key='{self.public_key._encode_to_base64()}')"
+            f" public_key='{self.public_key.export_public_key()}')"
         )
 
     def __add__(self, other: EncryptedUnsignedInteger | int) -> EncryptedUnsignedInteger:
