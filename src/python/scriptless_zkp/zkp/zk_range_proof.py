@@ -43,6 +43,7 @@ import base64
 import uuid
 
 from dataclasses import dataclass
+from typing import Union
 
 from uuid import UUID
 
@@ -297,6 +298,28 @@ class ProverChallengeCiphertexts:
 
 
 @dataclass
+class WitnessTweakedProverChallenges:
+    tweaked_challenges: list[Union[tuple[int, int, int, int], tuple[int, int, int]]]
+
+    def __init__(self, tweaked_challenges: list[Union[tuple[int, int, int, int], tuple[int, int, int]]]):
+        self.tweaked_challenges = tweaked_challenges
+
+    @property
+    def count(self) -> int:
+        return len(self.tweaked_challenges)
+
+    def challenge_at(self, index: int) -> Union[tuple[int, int, int, int], tuple[int, int, int]]:
+        return self.tweaked_challenges[index]
+
+    def encode_as_string(self) -> str:
+        return ",".join(
+            map(
+                str, self.tweaked_challenges
+            )
+        )
+
+
+@dataclass
 class VerifierChallengeRevealResponse:
     verifier_challenge: int
     app_session_id: UUID
@@ -470,6 +493,73 @@ class ZKRangeProofProver:
 
         return self.session.random_challenges.encrypt_challenges(self.session.paillier_pub_key)
 
+    def step4_and_prepare_transmission(self, encoded_revealed_verifier_challenge: str) -> str:
+        if self.session.protocol_step < 2:
+            raise ValueError("Prover protocol step #2 not yet completed.")
+        elif self.session.protocol_step >= 4:
+            raise ValueError("Prover protocol step #4 already completed.")
+
+        revealed_verifier_challenge = VerifierChallengeRevealResponse.from_string_encoding(
+            encoded_revealed_verifier_challenge
+        )
+
+        tweaked_prover_challenges: WitnessTweakedProverChallenges = self._receive_revealed_verifier_challenge(
+            revealed_verifier_challenge
+        )
+
+        return tweaked_prover_challenges.encode_as_string()
+
+    def _receive_revealed_verifier_challenge(
+            self,
+            revealed_verifier_challenge: VerifierChallengeRevealResponse
+    ) -> WitnessTweakedProverChallenges:
+        # Convert verifier's challenge & session ID to byte arrays (in big-endian byte order) & concatenate them.
+        committed_secret: bytes = b"".join([
+            integer_to_bytes(revealed_verifier_challenge.verifier_challenge),
+            revealed_verifier_challenge.app_session_id.bytes
+        ])
+
+        revealed_commitment: RevealedKeyedHashCommitment = self.session.verifier_challenge_commitment.reveal(
+            committed_secret,
+            revealed_verifier_challenge.commitment_verification_key
+        )
+        # Verify revealed commitment (i.e., `e`, `sid`) matches the verifier's commitment to these values.
+        if not revealed_commitment.verify(self.session.verifier_challenge_commitment.commitment):
+            raise ValueError("Revealed verifier challenge commitment does not match the verifier's commitment.")
+
+        self.session.verifier_challenge = revealed_verifier_challenge.verifier_challenge
+        self.session.app_session_id = revealed_verifier_challenge.app_session_id
+        self.session.protocol_step = 4  # indicate completion of protocol step #4
+
+        # return self._answer_verifier_challenge(
+        #     self.secret_witness,
+        #     revealed_verifier_challenge.verifier_challenge,
+        #     self.session.random_challenges,
+        #     # self.session.prover_challenge_ciphertexts
+        # )
+
+    def _answer_verifier_challenge(self) -> WitnessTweakedProverChallenges:
+        t: int = self.context.security_param  # security parameter `t` (default 40)
+        # Obtain the binary representation of the verifier's challenge `e` as a string of `t` bits.
+        verifier_challenge_binary: str = format(
+            self.session.verifier_challenge, f"0{t}b"
+        )
+
+        tweaked_challenges: list[Union[tuple[int, int, int, int], tuple[int, int, int]]] = []
+        for i in range(0, t):
+            if verifier_challenge_binary[i] == "0":
+                tweaked_challenges.append((
+                    self.session.random_challenges.challenge_at(1, i),
+                    # r1_i,  # randomness used in prover challenge ciphertext c1_i
+                    self.session.random_challenges.challenge_at(2, i)
+                    # r2_i   # randomness used in prover challenge ciphertext c2_i
+                ))
+            else:  # verifier_challenge_binary[i] == "1"
+                z1: int = self.session.random_challenges.challenge_at(1, i) + self.secret_witness
+                z2: int = self.session.random_challenges.challenge_at(2, i) + self.secret_witness
+                # TODO: Select z = z1 or z2 based on which lies within [l, 2l].
+                #   Append (j, z, r * r_j_i mod N), where 'r' is the randomness used in the prover's encrypted witness.
+
 
 class ZKRangeProofVerifier:
     session: ZKRangeProofVerifierSession
@@ -554,7 +644,7 @@ class ZKRangeProofVerifier:
         if self.session.protocol_step < 1:
             raise ValueError("Verifier protocol step #1 (initialization) not yet completed.")
         elif self.session.protocol_step >= 3:
-            raise ValueError("Verifier protocol step #3 () already completed.")
+            raise ValueError("Verifier protocol step #3 already completed.")
 
         encrypted_prover_challenges: ProverChallengeCiphertexts = ProverChallengeCiphertexts.from_string_encoding(
             encoded_encrypted_prover_challenges
