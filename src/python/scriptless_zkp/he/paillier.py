@@ -319,6 +319,9 @@ class PaillierPrivateKey:
         Uses the string encoding format, as defined in the Password Hashing Competition's string format spec:
         https://github.com/P-H-C/phc-string-format/blob/master/phc-sf-spec.md
 
+        The encoded encrypted private key format is as follows:
+            `$pbkdf2$v={VERSION}$iterations={ITERATIONS},salt_size={SALT_SIZE}${ENCRYPTED_PRIVATE_KEY_ASN1_DER_BASE64}`
+
         :param encrypted_private_key_asn1_der: an encrypted private key wrapped in a PKCS#8 container, and encoded in
                the (ASN.1) DER binary format, which includes the PBKDF2 (HMAC) salt value used during (symmetric)
                key-wrap encryption key derivation.
@@ -392,10 +395,10 @@ class PaillierPrivateKey:
             return cls._decode_from_base64(private_key_base64_bytes.decode('utf-8'))
         else:  # no passphrase provided
             # Decode the base64-encoded ASN.1 DER byte string of the Paillier private key, to obtain the DER bytes.
-            encoded_private_key_bytes: bytes = base64.b64decode(encoded_private_key)
+            encoded_private_key_der: bytes = base64.b64decode(encoded_private_key)
 
             # Decode an ASN.1 DER-encoded Paillier private key, which was not encrypted.
-            decoded_private_key: bytes = cls._decode_pkcs8_unencrypted_private_key(encoded_private_key_bytes)
+            decoded_private_key: bytes = cls._decode_pkcs8_unencrypted_private_key(encoded_private_key_der)
 
             return cls._decode_from_base64(decoded_private_key.decode('utf-8'))
 
@@ -427,7 +430,7 @@ class PaillierPrivateKey:
         string.
 
         The encoded private key format is expected to be in the following format:
-            `$pbkdf2$v={VERSION}$iterations={ITERATIONS}${ENCRYPTED_PRIVATE_KEY_ASN1_DER_BASE64}`
+            `$pbkdf2$v={VERSION}$iterations={ITERATIONS},salt_size={SALT_SIZE}${ENCRYPTED_PRIVATE_KEY_ASN1_DER_BASE64}`
 
         :see: `Password Hashing Competition: String Format <https://github.com/P-H-C/phc-string-format/blob/master/phc-sf-spec.md>`_
 

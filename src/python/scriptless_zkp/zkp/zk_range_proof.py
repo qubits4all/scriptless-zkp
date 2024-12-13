@@ -312,15 +312,46 @@ class VerifierChallengeRevealResponse:
         self.app_session_id = app_session_id
         self.revealed_commitment = revealed_verifier_challenge_commitment
 
+    @classmethod
+    def from_string_encoding(cls, encoded_response: str) -> VerifierChallengeRevealResponse:
+        # Parse the verifier's challenge, app session ID, and the commitment's verification key & hash algorithm from
+        # the encoded response string.
+        verifier_challenge, app_session_id, verification_key_base64, hash_algo = encoded_response.split(":")
+        # Decode the base64-encoded verification key.
+        verification_key: bytes = base64.b64decode(verification_key_base64, validate=True)
+
+        return cls(
+            int(verifier_challenge),
+            UUID(app_session_id),
+            RevealedKeyedHashCommitment(
+                verifier_challenge,
+                bytearray(verification_key),
+                hash_algo
+            )
+        )
+
     @property
     def commitment_verification_key(self) -> bytearray:
         return self.revealed_commitment.verification_key
+
+    def __str__(self) -> str:
+        return self.encode_as_string()
+
+    def __repr__(self) -> str:
+        verification_key_base64: str = base64.b64encode(self.commitment_verification_key).decode(encoding='utf-8')
+
+        return (
+            f"VerifierChallengeRevealResponse(verifier_challenge={self.verifier_challenge}, "
+            f"app_session_id={self.app_session_id!s}, commitment_verification_key={verification_key_base64}, "
+            f"commitment_hash_algorithm='{self.revealed_commitment.hash_algorithm}')"
+        )
 
     def encode_as_string(self) -> str:
         return ":".join([
             str(self.verifier_challenge),
             str(self.app_session_id),
-            base64.b64encode(self.commitment_verification_key).decode(encoding='utf-8')
+            base64.b64encode(self.commitment_verification_key).decode(encoding='utf-8'),
+            self.revealed_commitment.hash_algorithm
         ])
 
 
@@ -406,7 +437,28 @@ class ZKRangeProofProver:
     def context(self) -> ZKRangeProofContext:
         return self.session.context
 
-    def init_prover_protocol(
+    def step2_and_prepare_transmission(self, encoded_verifier_commitment: str) -> str:
+        """
+        Given the Verifier's commitment to their challenge `e` and shared session ID `sid` (received as a string
+        encoding), the Prover performs Step #2 of the interactive ZK range proof protocol, generating & encrypting
+        random challenge values, and returning a string encoding of the encrypted challenges for transmission to the
+        Verifier.
+        """
+        if self.session.protocol_step < 1:
+            raise ValueError("Verifier protocol step #1 (initialization) not yet completed.")
+        elif self.session.protocol_step > 2:
+            raise ValueError("Prover protocol step #2 already completed.")
+
+        # Parse the verifier's commitment to their challenge `e` and shared session ID `sid`.
+        verifier_challenge_commitment = KeyedHashCommitment.from_string_encoding(encoded_verifier_commitment)
+
+        encrypted_prover_challenges: ProverChallengeCiphertexts = self._init_prover_protocol(
+            verifier_challenge_commitment
+        )
+
+        return encrypted_prover_challenges.encode_as_string()
+
+    def _init_prover_protocol(
             self,
             verifier_challenge_commitment: KeyedHashCommitment
     ) -> ProverChallengeCiphertexts:
@@ -444,7 +496,7 @@ class ZKRangeProofVerifier:
     def context(self) -> ZKRangeProofContext:
         return self.session.context
 
-    def init_and_prepare_transmission(self) -> str:
+    def step1_and_prepare_transmission(self) -> str:
         """
         Initializes the verifier's protocol session (Protocol Step #1), and returns a string-encoded message for
         transmission to the Prover, including a sealed commitment to the verifier's challenge.
@@ -459,38 +511,6 @@ class ZKRangeProofVerifier:
         verifier_challenge_commitment = self._init_verifier_protocol()
 
         return verifier_challenge_commitment.encode_as_string()
-
-    def step3_and_prepare_transmission(self, encoded_encrypted_prover_challenges: str) -> str:
-        """
-        Performs Protocol Step #3 and returns a string-encoded message for transmission to the Prover.
-
-        Verifier receives the prover's encrypted challenges `w1_i` and `w2_i` for each `i` in `[1, t]`, stores these
-        ciphertexts in its session object for later use, then "decommits" to the verifier challenge's commitment.
-
-        Finally, it prepares a message to be transmitted to the Prover, including the revealed verifier challenge, app
-        session ID, and the commitment's (ephemeral) verification key (enabling the Prover to verify the sealed
-        commitment actually commits to the revealed values).
-
-        :param encoded_encrypted_prover_challenges: the prover's encrypted challenges `w1_i` and `w2_i` for each `i` in
-               `[1, t]`, provided in a field-delimited base64-based string encoding.
-        :return: a string-encoded message for transmission to the Prover, including the verifier's revealed challenge
-                 `e`, its revealed shared app session ID `sid`, and the commitment's (ephemeral) verification key.
-        :raises ValueError: if the Verifier's session object indicates this receipt of encrypted Prover challenges step
-                (Step #3) has already occurred (i.e., `protocol_step >= 3`), or if the initialization step (Step #1)
-                has not yet occurred.
-        """
-        if self.session.protocol_step < 1:
-            raise ValueError("Verifier protocol step #1 (initialization) not yet completed.")
-        elif self.session.protocol_step >= 3:
-            raise ValueError("Verifier protocol step #3 () already completed.")
-
-        encrypted_prover_challenges: ProverChallengeCiphertexts = ProverChallengeCiphertexts.from_string_encoding(
-            encoded_encrypted_prover_challenges
-        )
-
-        verifier_challenge_reveal_response = self._receive_encrypted_prover_challenges(encrypted_prover_challenges)
-
-        return verifier_challenge_reveal_response.encode_as_string()
 
     def _init_verifier_protocol(self) -> KeyedHashCommitment:
         """
@@ -512,18 +532,50 @@ class ZKRangeProofVerifier:
         # Protocol Step #1: Verifier sends this sealed commitment to the prover.
         return verifier_challenge_commitment
 
+    def step3_and_prepare_transmission(self, encoded_encrypted_prover_challenges: str) -> str:
+        """
+        Performs Protocol Step #3 and returns a string-encoded message for transmission to the Prover.
+
+        Verifier receives the prover's encrypted challenges `c1_i` and `c2_i` for each `i` in `[1, t]`, stores these
+        ciphertexts in its session object for later use, then "decommits" to the verifier challenge's commitment.
+
+        Finally, it prepares a message to be transmitted to the Prover, including the revealed verifier challenge, app
+        session ID, and the commitment's (ephemeral) verification key (enabling the Prover to verify the sealed
+        commitment actually commits to the revealed values).
+
+        :param encoded_encrypted_prover_challenges: the prover's encrypted challenges `c1_i` and `c2_i` for each `i` in
+               `[1, t]`, provided in a field-delimited base64-based string encoding.
+        :return: a string-encoded message for transmission to the Prover, including the verifier's revealed challenge
+                 `e`, its revealed shared app session ID `sid`, and the commitment's (ephemeral) verification key.
+        :raises ValueError: if the Verifier's session object indicates this receipt of encrypted Prover challenges step
+                (Step #3) has already occurred (i.e., `protocol_step >= 3`), or if the initialization step (Step #1)
+                has not yet occurred.
+        """
+        if self.session.protocol_step < 1:
+            raise ValueError("Verifier protocol step #1 (initialization) not yet completed.")
+        elif self.session.protocol_step >= 3:
+            raise ValueError("Verifier protocol step #3 () already completed.")
+
+        encrypted_prover_challenges: ProverChallengeCiphertexts = ProverChallengeCiphertexts.from_string_encoding(
+            encoded_encrypted_prover_challenges
+        )
+
+        verifier_challenge_reveal_response = self._receive_encrypted_prover_challenges(encrypted_prover_challenges)
+
+        return verifier_challenge_reveal_response.encode_as_string()
+
     def _receive_encrypted_prover_challenges(
             self,
             encrypted_prover_challenges: ProverChallengeCiphertexts
     ) -> VerifierChallengeRevealResponse:
         """
-        Verifier receives the prover's encrypted challenges `w1_i` and `w2_i` for each i in [1, t].
+        Verifier receives the prover's encrypted challenges `c1_i` and `c2_i` for each i in [1, t].
 
-        :param encrypted_prover_challenges: the prover's encrypted challenges `w1_i` and `w2_i` for each i in [1, t].
+        :param encrypted_prover_challenges: the prover's encrypted challenges `c1_i` and `c2_i` for each i in [1, t].
         :return: the verifier's challenge `e`, the shared session ID `sid`, and the revealed commitment to `e` and
                 `sid`.
         """
-        # Protocol Step #3: Verifier receives prover's encrypted challenges `w1_i` and `w2_i` for each i in [1, t].
+        # Protocol Step #3: Verifier receives prover's encrypted challenges `c1_i` and `c2_i` for each i in [1, t].
         self.session.prover_challenge_ciphertexts = encrypted_prover_challenges
         self.session.protocol_step = 3  # indicate completion of protocol step #3
 
