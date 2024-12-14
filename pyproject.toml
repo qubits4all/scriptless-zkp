@@ -1,15 +1,14 @@
-[project]
+[project.urls]
+Homepage = "https://github.com/qubits4all/scriptless-zkp"
+Repository = "https://github.com/qubits4all/scriptless-zkp.git"
+Issues = "https://github.com/qubits4all/scriptless-zkp/issues"
+
+[tool.poetry]
 name = "scriptless_zkp"
 version = "0.4.0"
-authors = [
-  { name="qubits4all", email="qubits4all@users.noreply.github.com" },
-]
-maintainers = [
-  { name="qubits4all", email="qubits4all@users.noreply.github.com" },
-]
+authors = [ "qubits4all <qubits4all@users.noreply.github.com>" ]
+maintainers = [ "qubits4all <qubits4all@users.noreply.github.com>" ]
 description = 'Scriptless-ZKP - Adaptor & multi-party signatures, zero-knowledge proofs (ZKPs) & "scriptless" scripts'
-readme = {file = "README.md", content-type = "text/markdown"}
-requires-python = ">=3.11"
 classifiers = [
   # How mature is this project? Common values are
   #   3 - Alpha
@@ -20,21 +19,8 @@ classifiers = [
   "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
   "Operating System :: OS Independent",
 ]
-
-[project.urls]
-Homepage = "https://github.com/qubits4all/scriptless-zkp"
-Repository = "https://github.com/qubits4all/scriptless-zkp.git"
-Issues = "https://github.com/qubits4all/scriptless-zkp/issues"
-
-[tool.poetry]
-name = "scriptless_zkp"
-version = "0.4.0"
-description = 'Scriptless-ZKP - Adaptor & multi-party signatures, zero-knowledge proofs (ZKPs) & "scriptless" scripts'
-authors = ["qubits4all <qubits4all@users.noreply.github.com>"]
-
 packages = [
-    { include = "src/python" },
-    { include = "src/python/**/*.py" },
+    { include = "scriptless_zkp", from = "src/python" }
 ]
 
 [tool.poetry.dependencies]
