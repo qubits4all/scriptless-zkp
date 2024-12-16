@@ -952,7 +952,7 @@ class EncryptedUnsignedInteger:
 
         Usage: `message_scalar - EncryptedUnsignedInteger`
         """
-        return self.subtract(scalar)
+        return self.subtract(scalar, left_sided=False)
 
     def __mul__(self, scalar: int) -> EncryptedUnsignedInteger:
         """
@@ -1051,9 +1051,12 @@ class EncryptedUnsignedInteger:
                 self.public_key
             )
 
-    def subtract(self, other: EncryptedUnsignedInteger | int) -> EncryptedUnsignedInteger:
+    def subtract(self, other: EncryptedUnsignedInteger | int, left_sided: bool = True) -> EncryptedUnsignedInteger:
         if type(other) is int:
-            return self._subtract_scalar(other)
+            if left_sided:
+                return self._subtract_scalar(other)
+            else:
+                return self._scalar_minus_ciphertext(other)
         elif isinstance(other, EncryptedUnsignedInteger):
             return self._subtract_ciphertexts(other)
         else:
@@ -1096,6 +1099,34 @@ class EncryptedUnsignedInteger:
             # (Note: `g^(-s) ≡ g^(n-s) mod n^2`)
             return EncryptedUnsignedInteger(
                 (self.encrypted * pow(self.public_key.g, -scalar, self.public_key.n2)) % self.public_key.n2,
+                self.public_key
+            )
+
+    def _scalar_minus_ciphertext(self, scalar: int) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic subtraction of an encrypted non-negative integer from a plaintext non-negative integer scalar
+        (i.e., `c2 := Enc(s - p1) = Enc(s) * Enc(p1)^-1 mod n^2`, where `p1` is the original plaintext non-negative
+        integer encrypted as this ciphertext, `s` is the provided plaintext non-negative integer scalar, and `c2` is
+        the resulting Paillier ciphertext encrypting the plaintext difference: `s - p`).
+        """
+        if scalar < 0 or scalar >= self.public_key.n:
+            raise ValueError("Scalar integer must be a non-negative integer in the range [0, n).")
+
+        if self.public_key.g == self.public_key.n + 1:
+            # Homomorphic subtraction of ciphertext from scalar without re-blinding:
+            # `c2 := Enc(s - p1) = Enc(s) * Enc(p1)^-1 = (1 + n*s) * Enc(p1)^-1 mod n^2`, using the optimization:
+            # `g^s ≡ (1 + n)^s ≡ (1 + n*s) mod n^2`, when `g == n + 1`.
+            return EncryptedUnsignedInteger((
+                    (1 + self.public_key.n * scalar) * mod_inverse(self.encrypted, self.public_key.n2)
+                ) % self.public_key.n2,
+                self.public_key
+            )
+        else:
+            # Homomorphic subtraction of ciphertext from scalar without re-blinding:
+            # `c2 := Enc(s - p1) = Enc(s) * Enc(p1)^-1 = g^s * Enc(p1)^-1 mod n^2`
+            return EncryptedUnsignedInteger((
+                    pow(self.public_key.g, scalar, self.public_key.n2) * mod_inverse(self.encrypted, self.public_key.n2)
+                ) % self.public_key.n2,
                 self.public_key
             )
 
