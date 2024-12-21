@@ -27,6 +27,7 @@ packages = [
 python = "^3.11"
 attrs = "~23.2.0"
 pycryptodomex = "~3.20.0"
+py_ecc = "~7.0.1"
 libnum = "~1.7.1"
 
 # Transitive dependencies:
