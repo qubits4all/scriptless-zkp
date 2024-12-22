@@ -29,6 +29,7 @@ from py_ecc.secp256k1 import secp256k1
 
 from scriptless_zkp.ecc.ecc_utils import encode_ecc_point
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
+from scriptless_zkp.number_theory import is_quadratic_residue, mod_inverse, mod_sqrt
 
 
 class EccPoint2D(ABC):
@@ -100,7 +101,7 @@ class EccPoint2D(ABC):
         pass
 
     @abstractmethod
-    def serialize(self) -> bytes:
+    def serialize(self, compress: bool = False) -> bytes:
         pass
 
     @classmethod
@@ -172,8 +173,8 @@ class WeierstrassPoint2D(EccPoint2D):
     def is_point_at_infinity(self) -> bool:
         return self._pt.is_point_at_infinity()
 
-    def serialize(self) -> bytes:
-        return encode_ecc_point(self.curve_config, self._pt)
+    def serialize(self, compress: bool = False) -> bytes:
+        return encode_ecc_point(self.curve_config, self._pt, compress=compress)
 
     @classmethod
     def deserialize(cls, serialized_point: bytes) -> WeierstrassPoint2D:
@@ -250,14 +251,67 @@ class Secp256K1Point2D(EccPoint2D):
         # Check for special (marker) point in Cartesian coordinates.
         return self.x == 0 and self.y == 0
 
-    # TODO: Implement serialization for secp256k1 points.
-    def serialize(self) -> bytes:
-        raise NotImplementedError("Serialization for secp256k1 points is not yet implemented.")
+    def serialize(self, compress: bool = False) -> bytes:
+        return Secp256K1Point2D._encode_point_SEC1(self._pt, compress=compress)
 
-    # TODO: Implement deserialization for secp256k1 points.
     @classmethod
     def deserialize(cls, serialized_point: bytes) -> Secp256K1Point2D:
-        raise NotImplementedError("Deserialization for secp256k1 points is not yet implemented.")
+        return Secp256K1Point2D(
+            *Secp256K1Point2D._decode_point_SEC1(serialized_point)
+        )
+
+    # noinspection PyPep8Naming
+    @staticmethod
+    def _encode_point_SEC1(ecc_point: PlainPoint2D, compress: bool = False) -> bytes:
+        # If the identity element (i.e., the point-at-infinity), return only the single-byte Code: 0x00.
+        if ecc_point[0] == 0 and ecc_point[1] == 0:
+            return b"\x00"
+
+        if compress:
+            code: bytes = b"\x02" if ecc_point[1] & 1 == 0 else b"\x03"  # Code: 0x02 for even y, 0x03 for odd y
+            return code + ecc_point[0].to_bytes(32, "big")  # encode only x-coordinate in big-endian
+        else:
+            code: bytes = b"\x04"  # Code: 0x04 for uncompressed point (i.e., both x & y coordinates are included)
+            return (code + ecc_point[0].to_bytes(32, "big")  # encode x & y coords. in big-endian
+                    + ecc_point[1].to_bytes(32, "big"))
+
+    # noinspection PyPep8Naming
+    @staticmethod
+    def _decode_point_SEC1(serialized_point: bytes) -> PlainPoint2D:
+        if len(serialized_point) == 1 and serialized_point[0] == 0x00:
+            # Return the identity element (i.e., the point-at-infinity) for the secp256k1 elliptic curve.
+            return 0, 0  # special (marker) point in Cartesian coordinates for the "point-at-infinity"
+
+        code: int = serialized_point[0]
+        if code == 0x02 or code == 0x03:
+            if len(serialized_point) != 33:
+                raise ValueError("Invalid SEC1 encoding: compressed point must be 33 bytes long.")
+
+            x: int = int.from_bytes(serialized_point[1:], "big")
+            y_sq: int = (pow(x, 3, secp256k1.P) + 7) % secp256k1.P   # SECP256k1 curve eq.: y^2 = x^3 + 7 (mod P)
+
+            # Check if the calculated square of the encoded point's (supposed) y-coord. has a square root modulo P.
+            if is_quadratic_residue(y_sq, secp256k1.P):
+                y: int = mod_sqrt(y_sq, secp256k1.P)[0]  # positive square root of y^2 (mod P)
+                if (y % 2) != code & 1:
+                    y = secp256k1.P - y  # adjust y-coordinate to match the parity encoded in the SEC1 code
+
+                return x, y
+            else:
+                raise ValueError(
+                    f"Invalid SEC1 encoded compressed elliptic curve point -- no corresponding y-coordinate exists"
+                    f" on the curve: {Secp256K1Point2D._curve_names()[0]} [x_coord={x}]"
+                )
+        elif code == 0x04:
+            if len(serialized_point) != 65:
+                raise ValueError("Invalid SEC1 encoding: uncompressed point must be 65 bytes long.")
+
+            x: int = int.from_bytes(serialized_point[1:33], "big")
+            y: int = int.from_bytes(serialized_point[33:], "big")
+
+            return x, y
+        else:
+            raise ValueError(f"Invalid SEC1 encoding code: {code}")
 
     @staticmethod
     def _curve_names() -> list[str]:

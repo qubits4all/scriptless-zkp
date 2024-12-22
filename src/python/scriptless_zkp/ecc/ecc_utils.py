@@ -72,8 +72,12 @@ def generate_random_nonce_pair(
     return private_nonce, nonce_point
 
 
-def encode_ecc_point(curve_config: WeierstrassEllipticCurveConfig, ecc_point: ECC.EccPoint) -> bytes:
-    return ecc_point_to_pubkey(curve_config, ecc_point).export_key(format='SEC1')
+def encode_ecc_point(
+        curve_config: WeierstrassEllipticCurveConfig,
+        ecc_point: ECC.EccPoint,
+        compress: bool = False
+) -> bytes:
+    return ecc_point_to_pubkey(curve_config, ecc_point).export_key(format='SEC1', compress=compress)
 
 
 def ecc_point_to_pubkey(curve_config: WeierstrassEllipticCurveConfig, ecc_point: ECC.EccPoint) -> ECC.EccKey:
