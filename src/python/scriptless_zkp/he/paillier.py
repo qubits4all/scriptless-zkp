@@ -832,6 +832,9 @@ class PaillierKeyPair:
         while True:
             p: int = random_strong_prime(size_bits)
             q: int = random_strong_prime(size_bits)
+            if p == q:
+                continue
+
             n: int = p * q  # candidate public modulus: `n = p * q`
 
             abs_diff: int = abs(p - q)
