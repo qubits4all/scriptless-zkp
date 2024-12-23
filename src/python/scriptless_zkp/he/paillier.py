@@ -927,6 +927,23 @@ class EncryptedUnsignedInteger:
         """
         return self.add(scalar)
 
+    def __neg__(self) -> EncryptedUnsignedInteger:
+        """
+        Returns the homomorphic additive inverse of this Paillier ciphertext, calculating an encryption of the additive
+        inverse of the encrypted plaintext integer modulo `n`, the plaintext domain's modulus
+        (i.e., `Enc(-p) = Enc(n-p)`).
+
+        Note: This is equivalent to subtracting this ciphertext from an encryption of zero,
+          (i.e., `c2 := -Enc(p1) = Enc(0) - Enc(p1) = Enc(0) + (-Enc(p1))`), but there is a more efficient method to
+          calculate the homomorphic additive inverse of a Paillier ciphertext.
+
+        In practice, the modular multiplicative inverse of the ciphertext's encrypted value is calculated (that maps to
+        the homomorphic additive inverse), and the result is returned as a new Paillier ciphertext.
+
+        :return: The homomorphic additive inverse of this Paillier ciphertext.
+        """
+        return self.negate()
+
     def __sub__(self, other: EncryptedUnsignedInteger | int) -> EncryptedUnsignedInteger:
         """
         Homomorphic subtraction of two Paillier encrypted integers, using the left-subtraction operator
@@ -1051,13 +1068,26 @@ class EncryptedUnsignedInteger:
                 self.public_key
             )
 
+    def negate(self) -> EncryptedUnsignedInteger:
+        """
+        Negates the encrypted integer, returning a new ciphertext encrypting the negation of the original plaintext
+        value modulo `n`, the plaintext domain's modulus (i.e., `Enc(-p) = Enc(n-p)`).
+        """
+        return EncryptedUnsignedInteger(
+            mod_inverse(self.encrypted, self.public_key.n2),
+            self.public_key
+        )
+
     def subtract(self, other: EncryptedUnsignedInteger | int, left_sided: bool = True) -> EncryptedUnsignedInteger:
         if type(other) is int:
+            # If the subtraction is left-sided (i.e., `EncryptedUnsignedInteger - scalar`), then subtract the scalar.
             if left_sided:
                 return self._subtract_scalar(other)
+            # If the subtraction is right-sided (i.e., `scalar - EncryptedUnsignedInteger`), then reverse the operands.
             else:
                 return self._scalar_minus_ciphertext(other)
         elif isinstance(other, EncryptedUnsignedInteger):
+            # In the case of homomorphic subtraction of two ciphertexts, the operand is left-sided subtraction.
             return self._subtract_ciphertexts(other)
         else:
             raise ValueError("Homomorphic subtraction operands must be of type EncryptedUnsignedInteger or int.")
@@ -1095,8 +1125,14 @@ class EncryptedUnsignedInteger:
             )
         else:
             # Homomorphic subtraction of scalar without re-blinding:
-            # `c2 := Enc(p - s) = Enc(p) * (g^s)^-1 mod n^2 = Enc(p) * g^(-s) mod n^2`
+            # `c2 := Enc(p - s) = Enc(p) * (g^s)^-1 mod n^2 ≡ Enc(p) * g^(-s) mod n^2`
             # (Note: `g^(-s) ≡ g^(n-s) mod n^2`)
+            #
+            # TODO: Check which of the following 3 ways of computing `g^(-s) mod n^2` is most efficient, and adjust
+            #   the implementation accordingly:
+            #     1.) `pow(g, -s, n2)`
+            #     2.) `pow(g, n - scalar, n2)`
+            #     3.a.) `mod_inverse(pow(g, scalar, n2), n2)` or 3.b.) `pow(mod_inverse(g, n2), scalar, n2)`
             return EncryptedUnsignedInteger(
                 (self.encrypted * pow(self.public_key.g, -scalar, self.public_key.n2)) % self.public_key.n2,
                 self.public_key
