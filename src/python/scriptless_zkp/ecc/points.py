@@ -21,7 +21,7 @@ serialization/deserialization.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import cast
+from typing import cast, override
 
 from Cryptodome.PublicKey import ECC
 
@@ -29,7 +29,7 @@ from py_ecc.secp256k1 import secp256k1
 
 from scriptless_zkp.ecc.ecc_utils import encode_ecc_point
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
-from scriptless_zkp.number_theory import is_quadratic_residue, mod_inverse, mod_sqrt
+from scriptless_zkp.number_theory import is_quadratic_residue, mod_sqrt
 
 
 class EccPoint2D(ABC):
@@ -51,8 +51,9 @@ class EccPoint2D(ABC):
     def __str__(self) -> str:
         return f"({self.x}, {self.y})"
 
+    @abstractmethod
     def __repr__(self) -> str:
-        return f"EccPoint2D(x={self.x}, y={self.y})"
+        pass
 
     @abstractmethod
     def __eq__(self, other: EccPoint2D) -> bool:
@@ -72,6 +73,12 @@ class EccPoint2D(ABC):
 
     def __rmul__(self, scalar: int) -> EccPoint2D:
         return self.__mul__(scalar)
+
+    def __hex__(self):
+        return self.to_hex()
+
+    def to_hex(self):
+        return f"({hex(self.x)}, {hex(self.y)})"
 
     @classmethod
     @abstractmethod
@@ -118,25 +125,34 @@ class WeierstrassPoint2D(EccPoint2D):
     curve_config: WeierstrassEllipticCurveConfig
     _pt: ECC.EccPoint
 
+    @override
     def __init__(self, curve_name: str, x: int, y: int):
         super().__init__(curve_name, x, y)
 
         self.curve_config = WeierstrassEllipticCurveConfig.for_curve_name(curve_name)
         self._pt = ECC.construct(curve=self.curve_config.curve, point_x=x, point_y=y).pointQ
 
+    @override
+    def __repr__(self) -> str:
+        return f"WeierstrassPoint2D(curve='{self.curve}', x={self.x}, y={self.y})"
+
+    @override
     def __eq__(self, other: WeierstrassPoint2D) -> bool:
         return self.curve_config.has_curve_name(other.curve) and self.x == other.x and self.y == other.y
 
+    @override
     def __add__(self, other: WeierstrassPoint2D) -> WeierstrassPoint2D:
         sum: ECC.EccPoint = self._pt.__add__(other._pt)
         return WeierstrassPoint2D(self.curve, sum.x, sum.y)
 
+    @override
     def __neg__(self) -> WeierstrassPoint2D:
         if self.is_point_at_infinity():
             return self
         else:
             return WeierstrassPoint2D(self.curve, self.x, -self.y)
 
+    @override
     def __mul__(self, scalar: int) -> WeierstrassPoint2D:
         if self.is_point_at_infinity():
             return self
@@ -152,31 +168,38 @@ class WeierstrassPoint2D(EccPoint2D):
         return WeierstrassPoint2D(self.curve, product.x, product.y)
 
     @classmethod
+    @override
     def base_point(cls, curve_name: str) -> WeierstrassPoint2D:
         ecc_pt: ECC.EccPoint = ECC.construct(curve=curve_name, d=1).pointQ
 
         return WeierstrassPoint2D(curve_name, ecc_pt.x, ecc_pt.y)
 
     @classmethod
+    @override
     def identity(cls, curve_name: str) -> WeierstrassPoint2D:
         curve_config = WeierstrassEllipticCurveConfig.for_curve_name(curve_name)
         ecc_pt: ECC.EccPoint = curve_config.identity
 
         return WeierstrassPoint2D(curve_name, ecc_pt.x, ecc_pt.y)
 
+    @override
     def curve_order(self) -> int:
         return self.curve_config.order
 
+    @override
     def curve_modulus(self) -> int:
         return self.curve_config.modulus
 
+    @override
     def is_point_at_infinity(self) -> bool:
         return self._pt.is_point_at_infinity()
 
+    @override
     def serialize(self, compress: bool = False) -> bytes:
         return encode_ecc_point(self.curve_config, self._pt, compress=compress)
 
     @classmethod
+    @override
     def deserialize(cls, serialized_point: bytes) -> WeierstrassPoint2D:
         ecc_key: ECC.EccKey = ECC.import_key(serialized_point)
         ecc_pt: ECC.EccPoint = ecc_key.pointQ
@@ -192,6 +215,7 @@ class Secp256K1Point2D(EccPoint2D):
     """
     PlainPoint2D = tuple[int, int]
 
+    @override
     def __init__(self, x: int, y: int):
         super().__init__(Secp256K1Point2D._curve_names()[0], x, y)
 
@@ -199,21 +223,29 @@ class Secp256K1Point2D(EccPoint2D):
     def _pt(self) -> PlainPoint2D:
         return cast("PlainPoint2D", (self.x, self.y))
 
+    @override
+    def __repr__(self) -> str:
+        return f"Secp256K1Point2D(curve='{self.curve}', x={self.x}, y={self.y})"
+
+    @override
     def __eq__(self, other: Secp256K1Point2D) -> bool:
         return self.curve == other.curve and self.x == other.x and self.y == other.y
 
     # TODO: Verify correct handling of a sum that results in the point-at-infinity (identity) element.
+    @override
     def __add__(self, other: Secp256K1Point2D) -> Secp256K1Point2D:
         sum_pt = secp256k1.add(self._pt, other._pt)
 
         return Secp256K1Point2D(sum_pt[0], sum_pt[1])
 
+    @override
     def __neg__(self) -> Secp256K1Point2D:
         if self.is_point_at_infinity():
             return self
         else:
             return Secp256K1Point2D(self.x, -self.y)
 
+    @override
     def __mul__(self, scalar: int) -> Secp256K1Point2D:
         if self.is_point_at_infinity():
             return self
@@ -229,10 +261,12 @@ class Secp256K1Point2D(EccPoint2D):
         return Secp256K1Point2D(product_pt[0], product_pt[1])
 
     @classmethod
+    @override
     def base_point(cls, curve_name: str) -> Secp256K1Point2D:
         return Secp256K1Point2D(secp256k1.G[0], secp256k1.G[1])
 
     @classmethod
+    @override
     def identity(cls, curve_name: str) -> Secp256K1Point2D:
         if curve_name in Secp256K1Point2D._curve_names():
             # Using a special (marker) point in Cartesian coordinates (not otherwise on the curve) to encode the
@@ -241,20 +275,25 @@ class Secp256K1Point2D(EccPoint2D):
         else:
             raise ValueError(f"Unsupported curve name: {curve_name}")
 
+    @override
     def curve_order(self) -> int:
         return secp256k1.N
 
+    @override
     def curve_modulus(self) -> int:
         return secp256k1.P
 
+    @override
     def is_point_at_infinity(self) -> bool:
         # Check for special (marker) point in Cartesian coordinates.
         return self.x == 0 and self.y == 0
 
+    @override
     def serialize(self, compress: bool = False) -> bytes:
         return Secp256K1Point2D._encode_point_SEC1(self._pt, compress=compress)
 
     @classmethod
+    @override
     def deserialize(cls, serialized_point: bytes) -> Secp256K1Point2D:
         return Secp256K1Point2D(
             *Secp256K1Point2D._decode_point_SEC1(serialized_point)
