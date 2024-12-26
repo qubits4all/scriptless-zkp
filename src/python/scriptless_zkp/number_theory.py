@@ -114,10 +114,14 @@ def has_mod_sqrt(a: int, prime_modulus: int) -> bool:
 def mod_sqrt(a: int, prime_modulus: int) -> tuple[int, ...]:
     """
     Computes the modular square root of the integer `a` modulo the odd prime `prime_modulus`, using the Tonelli-Shanks
-    algorithm. This function returns the positive square root of `a` modulo `prime_modulus`.
+    algorithm (for p == 1 mod 8), or using faster methods (when p == 3 mod 4 or p == 5 mod 8).
+    This function returns the positive square root of `a` modulo `prime_modulus`, if a solution exists; otherwise, it
+    raises a ValueError if `a` has no square root modulo `prime_modulus`.
+
     :param a: the integer for which the modular square root is computed.
     :param prime_modulus: the odd prime modulus for the modular square root computation.
     :return: the positive square root of `a` modulo `prime_modulus`.
+    :raises ValueError: if the integer `a` has no square root modulo `prime_modulus`.
     """
     if is_quadratic_nonresidue(a, prime_modulus):
         raise ValueError(
@@ -151,6 +155,7 @@ def mod_sqrt(a: int, prime_modulus: int) -> tuple[int, ...]:
         return positive_root, prime_modulus - positive_root
     else:  # prime_modulus % 8 == 1
         return tuple(
+            # Compute modular square root using the Tonelli-Shanks algorithm, for `p == 1 mod 8`.
             sqrtmod_prime_power(a, prime_modulus)  # note: this libnum function returns a Generator
         )
 
@@ -247,7 +252,7 @@ def random_safe_prime(size_bits: int) -> int:
     ``p = 2*q + 1``, where `q` is also prime (i.e., where ``q = (p - 1) / 2`` is prime). The associated prime `q`,
     where ``q = (p-1)/2``, is thereby a Sophie Germain prime.
 
-    This function generates a random (size_bits-1)-bit (strongly) probable prime `q` (verified with Miller-Rabin
+    This function generates a random (size_bits-1)-bit (strongly) probable prime `q` (verified with the Miller-Rabin
     primality test), and then applies Pocklington's criterion for primality to test whether ``p = 2*q + 1`` is prime,
     the latter of which requires only a single-round Fermat primality test for the base 2 in this case.
 
