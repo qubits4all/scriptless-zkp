@@ -174,7 +174,7 @@ class ECCGeneratorDerivationContext:
                 mask: int = self._generate_x_coordinate_mask(max_tweaks)
                 x_coord: int = x_coordinate_candidate & mask | i
 
-            y_squared: int = self._check_x_coordinate_is_on_curve(x_coord)
+            y_squared: int | None = self._check_x_coordinate_is_on_curve(x_coord)
             if y_squared is not None:
                 y_coord: int = mod_sqrt(y_squared, self.curve_config.modulus)[0]  # positive square root
                 generator = ECC.EccPoint(x_coord, y_coord, self.curve_config.curve)
