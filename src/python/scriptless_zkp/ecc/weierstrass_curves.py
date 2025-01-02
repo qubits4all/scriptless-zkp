@@ -150,15 +150,21 @@ class WeierstrassEllipticCurveConfig:
         verifying the point's x and y coordinates satisfy the Weierstrass elliptic curve equation:
         `y² = x³ + ax + b mod p`, where `p` is the prime modulus of the curve `E(F_p)` over the finite field `F_p` and
         `a` and `b` are the curve's defined coefficients.
-        """
-        if not point.is_point_at_infinity():
-            y_squared: int = pow(point.y, 2, self.modulus)
-            x_cubed: int = pow(point.x, 3, self.modulus)
 
-            # Verify point's (x, y) coordinates satisfy Weierstrass elliptic curve equation: `y² = x³ + ax + b mod p`
-            return y_squared == (x_cubed + self.coeff_a * int(point.x) + self.coeff_b) % self.modulus
-        else:
-            return True  # the identity element (point-at-infinity) is always considered "on the curve"
+        Note: The point-at-infinity (identity element `O`) is always considered to be "on the curve", and isn't checked
+          via the elliptic curve equation.
+
+        :param point: The elliptic curve point to verify for membership on this elliptic curve configuration's curve.
+        :return: `True` if the point is on the curve; `False` otherwise.
+        """
+        if point.is_point_at_infinity():
+            return True
+
+        # Verify point's (x, y) coordinates satisfy the Weierstrass elliptic curve equation: `y² = x³ + ax + b mod p`
+        y_squared: int = pow(point.y, 2, self.modulus)
+        x_cubed: int = pow(point.x, 3, self.modulus)
+
+        return y_squared == (x_cubed + self.coeff_a * int(point.x) + self.coeff_b) % self.modulus
 
     def has_curve_name(self, curve_name: str):
         """
@@ -175,9 +181,9 @@ class WeierstrassEllipticCurveConfig:
         return WeierstrassEllipticCurveConfig(
             curve="P-256",
             order=0xffffffff_00000000_ffffffff_ffffffff_bce6faad_a7179e84_f3b9cac2_fc632551,
-            modulus=0xffffffff_00000001_00000000_00000000_00000000_ffffffff_ffffffff_ffffffff,  # 2^256 - 2^224 + 2^192 + 2^96 - 1
+            modulus=0xffffffff_00000001_00000000_00000000_00000000_ffffffff_ffffffff_ffffffff,  # p = 2^256 - 2^224 + 2^192 + 2^96 - 1
             cofactor=1,
-            coeff_a=0xffffffff_00000001_00000000_00000000_00000000_ffffffff_ffffffff_fffffffc,
+            coeff_a=0xffffffff_00000001_00000000_00000000_00000000_ffffffff_ffffffff_fffffffc,  # -3 mod p
             coeff_b=0x5ac635d8_aa3a93e7_b3ebbd55_769886bc_651d06b0_cc53b0f6_3bce3c3e_27d2604b,
             size_bits=256,
             curve_aliases=["p256", "NIST P-256", "P-256", "prime256v1", "secp256r1", "nistp256"]
@@ -200,9 +206,9 @@ class WeierstrassEllipticCurveConfig:
         return WeierstrassEllipticCurveConfig(
             curve="P-384",
             order=0xffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_c7634d81_f4372ddf_581a0db2_48b0a77a_ecec196a_ccc52973,
-            modulus=0xffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_fffffffe_ffffffff_00000000_00000000_ffffffff,  # 2^384 - 2^128 - 2^96 + 2^32 - 1
+            modulus=0xffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_fffffffe_ffffffff_00000000_00000000_ffffffff,  # p = 2^384 - 2^128 - 2^96 + 2^32 - 1
             cofactor=1,
-            coeff_a=0xffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_fffffffe_ffffffff_00000000_00000000_fffffffc,
+            coeff_a=0xffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_fffffffe_ffffffff_00000000_00000000_fffffffc,  # -3 mod p
             coeff_b=0xb3312fa7_e23ee7e4_988e056b_e3f82d19_181d9c6e_fe814112_0314088f_5013875a_c656398d_8a2ed19d_2a85c8ed_d3ec2aef,
             size_bits=384,
             curve_aliases=["p384", "NIST P-384", "P-384", "prime384v1", "secp384r1", "nistp384"]
@@ -225,9 +231,9 @@ class WeierstrassEllipticCurveConfig:
         return WeierstrassEllipticCurveConfig(
             curve="P-521",
             order=0x01ff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_fffffffa_51868783_bf2f966b_7fcc0148_f709a5d0_3bb5c9b8_899c47ae_bb6fb71e_91386409,
-            modulus=0x01ff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff,  # 2^521 - 1
+            modulus=0x01ff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff,  # p = 2^521 - 1
             cofactor=1,
-            coeff_a=0x01ff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_fffffffc,
+            coeff_a=0x01ff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_fffffffc,  # -3 mod p
             coeff_b=0x0051_953eb961_8e1c9a1f_929a21a0_b68540ee_a2da725b_99b315f3_b8b48991_8ef109e1_56193951_ec7e937b_1652c0bd_3bb1bf07_3573df88_3d2c34f1_ef451fd4_6b503f00,
             size_bits=521,
             curve_aliases=["p521", "NIST P-521", "P-521", "prime521v1", "secp521r1", "nistp521"]
