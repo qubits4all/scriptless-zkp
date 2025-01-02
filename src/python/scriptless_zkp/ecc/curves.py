@@ -88,6 +88,22 @@ class EllipticCurveContext(ABC):
         self.size_bits = size_bits
         self.curve_aliases = curve_aliases
 
+    @classmethod
+    def secp256r1(cls) -> WeierstrassEllipticCurveContext:
+        return WeierstrassEllipticCurveContext.secp256r1()
+
+    @classmethod
+    def p256(cls) -> WeierstrassEllipticCurveContext:
+        return WeierstrassEllipticCurveContext.secp256r1()
+
+    @classmethod
+    def secp256k1(cls) -> SECP256K1EllipticCurveContext:
+        return SECP256K1EllipticCurveContext.secp256k1()
+
+    @classmethod
+    def p256k1(cls) -> SECP256K1EllipticCurveContext:
+        return SECP256K1EllipticCurveContext.secp256k1()
+
     @property
     def curve_size_bytes(self) -> int:
         """
@@ -269,6 +285,30 @@ class WeierstrassEllipticCurveContext(EllipticCurveContext):
                 return None
 
     @classmethod
+    def secp256r1(cls) -> WeierstrassEllipticCurveContext:
+        base_point = WeierstrassPoint2D(
+            curve_name="P-256",
+            x=0x6B17D1F2_E12C4247_F8BCE6E5_63A440F2_77037D81_2DEB33A0_F4A13945_D898C296,  # big-endian
+            y=0x4FE342E2_FE1A7F9B_8EE7EB4A_7C0F9E16_2BCE3357_6B315ECE_CBB64068_37BF51F5   # big-endian
+        )
+
+        return cls(
+            curve="P-256",
+            order=0xFFFFFFFF_00000000_FFFFFFFF_FFFFFFFF_BCE6FAAD_A7179E84_F3B9CAC2_FC632551,
+            modulus=0xFFFFFFFF_00000001_00000000_00000000_00000000_FFFFFFFF_FFFFFFFF_FFFFFFFF,  # p = 2^256 - 2^224 + 2^192 + 2^96 - 1
+            coeff_a=0xFFFFFFFF_00000001_00000000_00000000_00000000_FFFFFFFF_FFFFFFFF_FFFFFFFC,  # -3 mod p
+            coeff_b=0X5AC635D8_AA3A93E7_B3EBBD55_769886BC_651D06B0_CC53B0F6_3BCE3C3E_27D2604B,
+            base_point=base_point,
+            cofactor=1,
+            size_bits=256,
+            curve_aliases=["p256", "NIST P-256", "P-256", "prime256v1", "secp256r1", "nistp256"]
+        )
+
+    @classmethod
+    def p256(cls) -> WeierstrassEllipticCurveContext:
+        return cls.secp256r1()
+
+    @classmethod
     def is_curve_supported(cls, curve_name: str) -> bool:
         """
         Returns whether the provided elliptic curve common/primary name or alias is supported.
@@ -294,37 +334,27 @@ class WeierstrassEllipticCurveContext(EllipticCurveContext):
             # 'P-521': ["P-521", "NIST P-521", "secp521r1", "prime521v1", "nistp521", "p521"]
         }
 
-    @classmethod
-    def secp256r1(cls) -> WeierstrassEllipticCurveContext:
-        # TODO: Double-check these curve parameters against the SEC 2 standard document:
+    @property
+    def identity(self) -> WeierstrassPoint2D:
+        return WeierstrassPoint2D.identity(self.curve)
 
-        base_point = WeierstrassPoint2D(
-            curve_name="secp256r1",
-            x=0x6b17d1f2_e12c4247_f8bce6e5_63a440f2_77037d81_2deb33a0_f4a13945_d898c296,
-            y=0x4fe342e2_fe1a7f9b_8ee7eb4a_7c0f9e16_2bce3357_6b315ece_cbb64068_37bf51f5,
-        )
+    @property
+    def coeff_a(self) -> int:
+        return self._a
 
-        return cls(
-            curve="P-256",
-            order=0xffffffff_00000000_ffffffff_ffffffff_bce6faad_a7179e84_f3b9cac2_fc632551,
-            modulus=0xffffffff_00000001_00000000_00000000_00000000_ffffffff_ffffffff_ffffffff,  # p = 2^256 - 2^224 + 2^192 + 2^96 - 1
-            coeff_a=0xffffffff_00000001_00000000_00000000_00000000_ffffffff_ffffffff_fffffffc,  # -3 mod p
-            coeff_b=0x5ac635d8_aa3a93e7_b3ebbd55_769886bc_651d06b0_cc53b0f6_3bce3c3e_27d2604b,
-            base_point=base_point,
-            cofactor=1,
-            size_bits=256,
-            curve_aliases=["p256", "NIST P-256", "P-256", "prime256v1", "secp256r1", "nistp256"]
-        )
-
-    @classmethod
-    def p256(cls) -> WeierstrassEllipticCurveContext:
-        return cls.secp256r1()
+    @property
+    def coeff_b(self) -> int:
+        return self._b
 
     def __str__(self) -> str:
-        pass
+        return self.__repr__()
 
     def __repr__(self) -> str:
-        pass
+        return (
+            f"WeierstrassEllipticCurveContext(curve='{self.curve}', order={self.order}, modulus={self.modulus}, "
+            f"coeff_a={self._a}, coeff_b={self._b}, base_point={self.base_point!s}, cofactor={self.cofactor}, "
+            f"size_bits={self.size_bits}, curve_aliases={self.curve_aliases})"
+        )
 
     def is_point_at_infinity(self, point: WeierstrassPoint2D) -> bool:
         return point.is_point_at_infinity()
@@ -355,10 +385,6 @@ class WeierstrassEllipticCurveContext(EllipticCurveContext):
     def deserialize_point(self, serialized_point: bytes) -> WeierstrassPoint2D:
         return WeierstrassPoint2D.deserialize(self.curve, serialized_point)
 
-    @property
-    def identity(self) -> WeierstrassPoint2D:
-        return WeierstrassPoint2D.identity(self.curve)
-
 
 class SECP256K1EllipticCurveContext(EllipticCurveContext):
     _b: int
@@ -378,17 +404,49 @@ class SECP256K1EllipticCurveContext(EllipticCurveContext):
         self._b = coeff_b
 
     @classmethod
+    def for_curve_name(cls, curve_name: str) -> SECP256K1EllipticCurveContext | None:
+        """
+        Factory function for constructing a configuration context for a supported elliptic curve, given its common name
+        or alias; otherwise returning `None` if the provided curve name is not a supported curve.
+        :param curve_name: The primary name or alias of a supported elliptic curve.
+        :return: A configuration context for a supported elliptic curve; or `None` if the named curve is unsupported.
+        """
+        # Check if provided elliptic curve name is a primary name for a supported curve.
+        if curve_name in cls._supported_curve_aliases():
+            return cls._curve_by_primary_name(curve_name)
+        else:  # otherwise check if provided curve name is an alias for a supported curve
+            for curve, aliases in cls._supported_curve_aliases().items():
+                if curve_name in aliases:
+                    return cls._curve_by_primary_name(curve)
+            else:  # provided curve name is not a primary name or alias for a supported curve
+                return None
+
+    @classmethod
+    def _curve_by_primary_name(cls, primary_curve_name: str) -> SECP256K1EllipticCurveContext | None:
+        """
+        Returns an elliptic curve configuration context given the curve's primary name, if it is a supported curve;
+        otherwise, returns `None`.
+        :param primary_curve_name: The primary name of a supported elliptic curve.
+        :return: A configuration context for a supported elliptic curve, given its primary name; or `None` if
+                 unsupported.
+        """
+        match primary_curve_name:
+            case "secp256k1":
+                return cls.secp256k1()
+            case _:  # unsupported curve
+                return None
+
+    @classmethod
     def secp256k1(cls) -> SECP256K1EllipticCurveContext:
-        # TODO: Double-check these curve parameters against the SEC 2 standard document:
         base_point = SECP256K1Point2D(
             x=0x79BE667E_F9DCBBAC_55A06295_CE870B07_029BFCDB_2DCE28D9_59F2815B_16F81798,
             y=0x483ADA77_26A3C465_5DA4FBFC_0E1108A8_FD17B448_A6855419_9C47D08FF_B10D4B8,
         )
 
-        return cls(
+        return SECP256K1EllipticCurveContext(
             curve="secp256k1",
             order=0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFE_BAAEDCE6_AF48A03B_BFD25E8C_D0364141,
-            modulus=0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFE_FFFFFC2F,
+            modulus=0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFE_FFFFFC2F,  # p = 2^256 − 2^32 − 2^9 − 2^8 − 2^7 − 2^6 − 2^4 − 1
             coeff_b=0x00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000007,  # 7 in `y² = x³ + 7 mod p`
             base_point=base_point,
             cofactor=1,
@@ -399,10 +457,6 @@ class SECP256K1EllipticCurveContext(EllipticCurveContext):
     @classmethod
     def p256k1(cls) -> SECP256K1EllipticCurveContext:
         return cls.secp256k1()
-
-    @classmethod
-    def for_curve_name(cls, curve_name: str) -> SECP256K1EllipticCurveContext | None:
-        pass
 
     @classmethod
     def is_curve_supported(cls, curve_name: str) -> bool:
@@ -428,11 +482,27 @@ class SECP256K1EllipticCurveContext(EllipticCurveContext):
             'secp256k1': ["secp256k1", "p256k1", "prime256k1", "ansip256k1"],
         }
 
+    @property
+    def identity(self) -> SECP256K1Point2D:
+        return SECP256K1Point2D.identity(self.curve)
+
+    @property
+    def coeff_a(self) -> int:
+        return 0
+
+    @property
+    def coeff_b(self) -> int:
+        return self._b
+
     def __str__(self) -> str:
-        pass
+        return self.__repr__()
 
     def __repr__(self) -> str:
-        pass
+        return (
+            f"SECP256K1EllipticCurveContext(curve='{self.curve}', order={self.order}, modulus={self.modulus}, "
+            f"coeff_b={self._b}, base_point={self.base_point!s}, cofactor={self.cofactor}, size_bits={self.size_bits}, "
+            f"curve_aliases={self.curve_aliases})"
+        )
 
     def is_point_at_infinity(self, point: SECP256K1Point2D) -> bool:
         return point.is_point_at_infinity()
@@ -462,7 +532,3 @@ class SECP256K1EllipticCurveContext(EllipticCurveContext):
 
     def deserialize_point(self, serialized_point: bytes) -> SECP256K1Point2D:
         return SECP256K1Point2D.deserialize(self.curve, serialized_point)
-
-    @property
-    def identity(self) -> SECP256K1Point2D:
-        return SECP256K1Point2D.identity(self.curve)
