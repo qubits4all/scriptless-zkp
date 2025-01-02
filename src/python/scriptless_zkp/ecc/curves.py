@@ -10,10 +10,10 @@ from abc import ABC, abstractmethod
 
 import math
 
-from scriptless_zkp.ecc.points import EccPoint2D
+from scriptless_zkp.ecc.points import ECCPoint2D, WeierstrassPoint2D, SECP256K1Point2D
 
 
-class EllipticCurveConfig(ABC):
+class EllipticCurveContext(ABC):
     """
     Configuration context for working with elliptic curves used in elliptic curve cryptography (ECC).
     Support for obtaining a curve's base point (or generator) is provided, as well as frequently needed properties for
@@ -36,7 +36,7 @@ class EllipticCurveConfig(ABC):
     equation's coefficients `a` and `b` are in.
     """
 
-    base_point: EccPoint2D
+    base_point: ECCPoint2D
     """
     A common, public base point (generator) `G` of the elliptic curve, which generates a cyclic sub-group `<G>` of
     order ``self.order``.
@@ -63,8 +63,9 @@ class EllipticCurveConfig(ABC):
             curve: str,
             order: int,
             modulus: int,
-            base_point: EccPoint2D,
-            cofactor: int, size_bits: int,
+            base_point: ECCPoint2D,
+            cofactor: int,
+            size_bits: int,
             curve_aliases: list[str]
     ):
         """
@@ -97,7 +98,7 @@ class EllipticCurveConfig(ABC):
 
     # noinspection PyPep8Naming
     @property
-    def G(self) -> EccPoint2D:
+    def G(self) -> ECCPoint2D:
         """
         Returns the public base point (generator) `G` of the elliptic curve, which generates a cyclic sub-group `<G>`
         of order ``self.order``.
@@ -105,7 +106,35 @@ class EllipticCurveConfig(ABC):
         """
         return self.base_point
 
-    def is_identity(self, point: EccPoint2D) -> bool:
+    @property
+    def q(self) -> int:
+        return self.order
+
+    @property
+    def p(self) -> int:
+        return self.modulus
+
+    @property
+    def h(self) -> int:
+        return self.cofactor
+
+    @abstractmethod
+    def __str__(self) -> str:
+        """
+        Returns a string-encoding of this elliptic curve configuration context, including the curve name and its
+        primary properties.
+        """
+        pass
+
+    @abstractmethod
+    def __repr__(self) -> str:
+        """
+        Returns a string representation of this elliptic curve configuration context, including the curve name and its
+        primary properties.
+        """
+        pass
+
+    def is_identity(self, point: ECCPoint2D) -> bool:
         """
         Returns whether the given elliptic curve point is the point-at-infinity (`O`), the group's additive identity.
         :return whether this point is the identity element (i.e., the point-at-infinity).
@@ -113,7 +142,7 @@ class EllipticCurveConfig(ABC):
         return self.is_point_at_infinity(point)
 
     @abstractmethod
-    def is_point_at_infinity(self, point: EccPoint2D) -> bool:
+    def is_point_at_infinity(self, point: ECCPoint2D) -> bool:
         """
         Returns whether the given elliptic curve point is the point-at-infinity (`O`), the group's additive identity.
         :return whether this point is the point-at-infinity.
@@ -129,7 +158,7 @@ class EllipticCurveConfig(ABC):
         return curve_name in self.curve_aliases
 
     @abstractmethod
-    def is_point_on_curve(self, point: EccPoint2D) -> bool:
+    def is_point_on_curve(self, point: ECCPoint2D) -> bool:
         """
         Returns whether the given elliptic curve point is on this curve, inclusive of the point-at-infinity, by
         verifying the point's x and y coordinates satisfy the elliptic curve's equation.
@@ -137,7 +166,7 @@ class EllipticCurveConfig(ABC):
         pass
 
     @abstractmethod
-    def serialize_point(self, point: EccPoint2D, compress: bool = False) -> bytes:
+    def serialize_point(self, point: ECCPoint2D, compress: bool = False) -> bytes:
         """
         Serialize the given elliptic curve point to a byte string (e.g., using the SEC1 encoding format).
         :param point: the elliptic curve point to serialize.
@@ -147,7 +176,7 @@ class EllipticCurveConfig(ABC):
         pass
 
     @abstractmethod
-    def deserialize_point(self, serialized_point: bytes) -> EccPoint2D:
+    def deserialize_point(self, serialized_point: bytes) -> ECCPoint2D:
         """
         Deserialize the given byte string representation of an elliptic curve point to an elliptic curve point instance.
         :param serialized_point: the byte string representation of the elliptic curve point to deserialize
@@ -160,12 +189,12 @@ class EllipticCurveConfig(ABC):
 
     @property
     @abstractmethod
-    def identity(self) -> EccPoint2D:
+    def identity(self) -> ECCPoint2D:
         pass
 
     @classmethod
     @abstractmethod
-    def for_curve_name(cls, curve_name: str) -> EllipticCurveConfig:
+    def for_curve_name(cls, curve_name: str) -> EllipticCurveContext | None:
         """
         Retrieve an elliptic curve configuration context for the specified curve name.
         :param curve_name: the name of the elliptic curve to retrieve a configuration instance for.
@@ -177,3 +206,263 @@ class EllipticCurveConfig(ABC):
     @abstractmethod
     def is_curve_supported(cls, curve_name: str) -> bool:
         pass
+
+
+class WeierstrassEllipticCurveContext(EllipticCurveContext):
+    """
+    Configuration context for working with Weierstrass elliptic curves used in elliptic curve cryptography (ECC).
+    """
+    _a: int
+    _b: int
+
+    def __init__(
+            self,
+            curve: str,
+            order: int,
+            modulus: int,
+            coeff_a: int,
+            coeff_b: int,
+            base_point: WeierstrassPoint2D,
+            cofactor: int,
+            size_bits: int,
+            curve_aliases: list[str]
+    ):
+        super().__init__(curve, order, modulus, base_point, cofactor, size_bits, curve_aliases)
+        self._a = coeff_a
+        self._b = coeff_b
+
+    @classmethod
+    def for_curve_name(cls, curve_name: str) -> WeierstrassEllipticCurveContext | None:
+        """
+        Factory function for constructing a configuration context for a supported elliptic curve, given its common name
+        or alias; otherwise returning `None` if the provided curve name is not a supported curve.
+        :param curve_name: The primary name or alias of a supported elliptic curve.
+        :return: A configuration context for a supported elliptic curve; or `None` if the named curve is unsupported.
+        """
+        # Check if provided elliptic curve name is a primary name for a supported curve.
+        if curve_name in cls._supported_curve_aliases():
+            return cls._curve_by_primary_name(curve_name)
+        else:  # otherwise check if provided curve name is an alias for a supported curve
+            for curve, aliases in cls._supported_curve_aliases().items():
+                if curve_name in aliases:
+                    return cls._curve_by_primary_name(curve)
+            else:  # provided curve name is not a primary name or alias for a supported curve
+                return None
+
+    @classmethod
+    def _curve_by_primary_name(cls, primary_curve_name: str) -> WeierstrassEllipticCurveContext | None:
+        """
+        Returns an elliptic curve configuration context given the curve's primary name, if it is a supported curve;
+        otherwise, returns `None`.
+        :param primary_curve_name: The primary name of a supported elliptic curve.
+        :return: A configuration context for a supported elliptic curve, given its primary name; or `None` if
+                 unsupported.
+        """
+        match primary_curve_name:
+            case "P-256":
+                return cls.p256()
+            # case "P-384":
+            #     return cls.p384()
+            # case "P-521":
+            #     return cls.p521()
+            case _:  # unsupported curve
+                return None
+
+    @classmethod
+    def is_curve_supported(cls, curve_name: str) -> bool:
+        """
+        Returns whether the provided elliptic curve common/primary name or alias is supported.
+        """
+        # Check if provided elliptic curve name is a primary name for a supported curve.
+        return curve_name in cls._supported_curve_aliases() or (
+            # Otherwise, check if provided curve name is an alias for a supported curve.
+            any(
+                curve_name in aliases for aliases in cls._supported_curve_aliases().values()
+            )
+        )
+
+    @staticmethod
+    def _supported_curve_aliases() -> dict[str, list[str]]:
+        """
+        Returns a dictionary of supported elliptic curve names, where each key is the primary name for a supported
+        curve, and the value is a list of aliases for that curve.
+        :return: A dictionary of supported elliptic curve aliases keyed by a curve's primary name.
+        """
+        return {
+            'P-256': ["P-256", "NIST P-256", "secp256r1", "prime256v1", "nistp256", "p256"],
+            # 'P-384': ["P-384", "NIST P-384", "secp384r1", "prime384v1", "nistp384", "p384"],
+            # 'P-521': ["P-521", "NIST P-521", "secp521r1", "prime521v1", "nistp521", "p521"]
+        }
+
+    @classmethod
+    def secp256r1(cls) -> WeierstrassEllipticCurveContext:
+        # TODO: Double-check these curve parameters against the SEC 2 standard document:
+
+        base_point = WeierstrassPoint2D(
+            curve_name="secp256r1",
+            x=0x6b17d1f2_e12c4247_f8bce6e5_63a440f2_77037d81_2deb33a0_f4a13945_d898c296,
+            y=0x4fe342e2_fe1a7f9b_8ee7eb4a_7c0f9e16_2bce3357_6b315ece_cbb64068_37bf51f5,
+        )
+
+        return cls(
+            curve="P-256",
+            order=0xffffffff_00000000_ffffffff_ffffffff_bce6faad_a7179e84_f3b9cac2_fc632551,
+            modulus=0xffffffff_00000001_00000000_00000000_00000000_ffffffff_ffffffff_ffffffff,  # p = 2^256 - 2^224 + 2^192 + 2^96 - 1
+            coeff_a=0xffffffff_00000001_00000000_00000000_00000000_ffffffff_ffffffff_fffffffc,  # -3 mod p
+            coeff_b=0x5ac635d8_aa3a93e7_b3ebbd55_769886bc_651d06b0_cc53b0f6_3bce3c3e_27d2604b,
+            base_point=base_point,
+            cofactor=1,
+            size_bits=256,
+            curve_aliases=["p256", "NIST P-256", "P-256", "prime256v1", "secp256r1", "nistp256"]
+        )
+
+    @classmethod
+    def p256(cls) -> WeierstrassEllipticCurveContext:
+        return cls.secp256r1()
+
+    def __str__(self) -> str:
+        pass
+
+    def __repr__(self) -> str:
+        pass
+
+    def is_point_at_infinity(self, point: WeierstrassPoint2D) -> bool:
+        return point.is_point_at_infinity()
+
+    def is_point_on_curve(self, point: WeierstrassPoint2D) -> bool:
+        """
+        Returns whether the given elliptic curve point is on this curve, inclusive of the point-at-infinity, by
+        verifying the point's x and y coordinates satisfy the Weierstrass elliptic curve equation:
+        `y² = x³ + ax + b mod p`, where `p` is the prime modulus of the curve `E(F_p)` over the finite field `F_p` and
+        `a` and `b` are the curve's defined coefficients.
+
+        Note: The point-at-infinity (identity element `O`) is always considered to be "on the curve", and isn't checked
+          via the elliptic curve equation.
+
+        :param point: The elliptic curve point to verify for membership on this elliptic curve configuration's curve.
+        :return: `True` if the point is on the curve; `False` otherwise.
+        """
+        if point.is_point_at_infinity():
+            return True
+
+        # Verify point's (x, y) coordinates satisfy the Weierstrass elliptic curve equation: `y² = x³ + ax + b mod p`
+        x, y = point.x, point.y
+        return (y * y) % self.modulus == (x * x * x + self._a * x + self._b) % self.modulus
+
+    def serialize_point(self, point: WeierstrassPoint2D, compress: bool = False) -> bytes:
+        return point.serialize(compress=compress)
+
+    def deserialize_point(self, serialized_point: bytes) -> WeierstrassPoint2D:
+        return WeierstrassPoint2D.deserialize(self.curve, serialized_point)
+
+    @property
+    def identity(self) -> WeierstrassPoint2D:
+        return WeierstrassPoint2D.identity(self.curve)
+
+
+class SECP256K1EllipticCurveContext(EllipticCurveContext):
+    _b: int
+
+    def __init__(
+            self,
+            curve: str,
+            order: int,
+            modulus: int,
+            coeff_b: int,
+            base_point: SECP256K1Point2D,
+            cofactor: int,
+            size_bits: int,
+            curve_aliases: list[str]
+    ):
+        super().__init__(curve, order, modulus, base_point, cofactor, size_bits, curve_aliases)
+        self._b = coeff_b
+
+    @classmethod
+    def secp256k1(cls) -> SECP256K1EllipticCurveContext:
+        # TODO: Double-check these curve parameters against the SEC 2 standard document:
+        base_point = SECP256K1Point2D(
+            x=0x79BE667E_F9DCBBAC_55A06295_CE870B07_029BFCDB_2DCE28D9_59F2815B_16F81798,
+            y=0x483ADA77_26A3C465_5DA4FBFC_0E1108A8_FD17B448_A6855419_9C47D08FF_B10D4B8,
+        )
+
+        return cls(
+            curve="secp256k1",
+            order=0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFE_BAAEDCE6_AF48A03B_BFD25E8C_D0364141,
+            modulus=0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFE_FFFFFC2F,
+            coeff_b=0x00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000007,  # 7 in `y² = x³ + 7 mod p`
+            base_point=base_point,
+            cofactor=1,
+            size_bits=256,
+            curve_aliases=["secp256k1", "p256k1", "prime256k1", "ansip256k1"]
+        )
+
+    @classmethod
+    def p256k1(cls) -> SECP256K1EllipticCurveContext:
+        return cls.secp256k1()
+
+    @classmethod
+    def for_curve_name(cls, curve_name: str) -> SECP256K1EllipticCurveContext | None:
+        pass
+
+    @classmethod
+    def is_curve_supported(cls, curve_name: str) -> bool:
+        """
+        Returns whether the provided elliptic curve common/primary name or alias is supported.
+        """
+        # Check if provided elliptic curve name is a primary name for a supported curve.
+        return curve_name in cls._supported_curve_aliases() or (
+            # Otherwise, check if provided curve name is an alias for a supported curve.
+            any(
+                curve_name in aliases for aliases in cls._supported_curve_aliases().values()
+            )
+        )
+
+    @staticmethod
+    def _supported_curve_aliases() -> dict[str, list[str]]:
+        """
+        Returns a dictionary of supported elliptic curve names, where each key is the primary name for a supported
+        curve, and the value is a list of aliases for that curve.
+        :return: A dictionary of supported elliptic curve aliases keyed by a curve's primary name.
+        """
+        return {
+            'secp256k1': ["secp256k1", "p256k1", "prime256k1", "ansip256k1"],
+        }
+
+    def __str__(self) -> str:
+        pass
+
+    def __repr__(self) -> str:
+        pass
+
+    def is_point_at_infinity(self, point: SECP256K1Point2D) -> bool:
+        return point.is_point_at_infinity()
+
+    def is_point_on_curve(self, point: SECP256K1Point2D) -> bool:
+        """
+        Returns whether the given elliptic curve point is on this curve, inclusive of the point-at-infinity, by
+        verifying the point's x and y coordinates satisfy the Koblitz elliptic curve equation: `y² = x³ + b mod p`
+        (i.e., essentially a Weierstrass elliptic curve: `y² = x³ + ax + b mod p` with coefficient a=0), where `p` is
+        the prime modulus of the curve `E(F_p)` over the finite field `F_p` and `b` is the curve's defined coefficient.
+
+        Note: The point-at-infinity (identity element `O`) is always considered to be "on the curve", and isn't checked
+          via the elliptic curve equation.
+
+        :param point: The elliptic curve point to verify for membership on this elliptic curve configuration's curve.
+        :return: `True` if the point is on the curve; `False` otherwise.
+        """
+        if point.is_point_at_infinity():
+            return True
+
+        # Verify point's (x, y) coordinates satisfy the Koblitz elliptic curve equation: `y² = x³ + b mod p`
+        x, y = point.x, point.y
+        return (y * y) % self.modulus == (x * x * x + self._b) % self.modulus
+
+    def serialize_point(self, point: SECP256K1Point2D, compress: bool = False) -> bytes:
+        return point.serialize(compress=compress)
+
+    def deserialize_point(self, serialized_point: bytes) -> SECP256K1Point2D:
+        return SECP256K1Point2D.deserialize(self.curve, serialized_point)
+
+    @property
+    def identity(self) -> SECP256K1Point2D:
+        return SECP256K1Point2D.identity(self.curve)
