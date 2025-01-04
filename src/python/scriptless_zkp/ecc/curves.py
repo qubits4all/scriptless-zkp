@@ -301,12 +301,44 @@ class WeierstrassEllipticCurveContext(EllipticCurveContext):
             base_point=base_point,
             cofactor=1,
             size_bits=256,
-            curve_aliases=["p256", "NIST P-256", "P-256", "prime256v1", "secp256r1", "nistp256"]
+            curve_aliases=["p256", "NIST P-256", "prime256v1", "secp256r1", "nistp256"]
         )
 
     @classmethod
     def p256(cls) -> WeierstrassEllipticCurveContext:
+        """
+        Convenience factory function for constructing a configuration context for the standard NIST P-256 elliptic curve
+        (also known as SECP-256r1), named after a common short alias.
+        """
         return cls.secp256r1()
+
+    @classmethod
+    def secp384r1(cls) -> WeierstrassEllipticCurveContext:
+        base_point = WeierstrassPoint2D(
+            curve_name="P-384",
+            x=0xAA87CA22_BE8B0537_8EB1C71E_F320AD74_6E1D3B62_8BA79B98_59F741E0_82542A38_5502F25D_BF55296C_3A545E38_72760AB7,  # big-endian
+            y=0x3617DE4A_96262C6F_5D9E98BF_9292DC29_F8F41DBD_289A147C_E9DA3113_B5F0B8C0_0A60B1CE_1D7E819D_7A431D7C_90EA0E5F  # big-endian90EA0E5F
+        )
+
+        return cls(
+            curve="P-384",
+            order=0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_C7634D81_F4372DDF_581A0DB2_48B0A77A_ECEC196A_CCC52973,
+            modulus=0xffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_fffffffe_ffffffff_00000000_00000000_ffffffff,  # p = 2^384 - 2^128 - 2^96 + 2^32 - 1
+            coeff_a=0xffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_fffffffe_ffffffff_00000000_00000000_fffffffc,  # -3 mod p
+            coeff_b=0xb3312fa7_e23ee7e4_988e056b_e3f82d19_181d9c6e_fe814112_0314088f_5013875a_c656398d_8a2ed19d_2a85c8ed_d3ec2aef,
+            base_point=base_point,
+            cofactor=1,
+            size_bits=384,
+            curve_aliases=["p384", "NIST P-384", "prime384v1", "secp384r1", "nistp384"]
+        )
+
+    @classmethod
+    def p384(cls) -> WeierstrassEllipticCurveContext:
+        """
+        Convenience factory function for constructing a configuration context for the standard NIST P-384 elliptic curve
+        (also known as SECP-384r1), named after a common short alias.
+        """
+        return cls.secp384r1()
 
     @classmethod
     def is_curve_supported(cls, curve_name: str) -> bool:
@@ -329,9 +361,9 @@ class WeierstrassEllipticCurveContext(EllipticCurveContext):
         :return: A dictionary of supported elliptic curve aliases keyed by a curve's primary name.
         """
         return {
-            'P-256': ["P-256", "NIST P-256", "secp256r1", "prime256v1", "nistp256", "p256"],
-            # 'P-384': ["P-384", "NIST P-384", "secp384r1", "prime384v1", "nistp384", "p384"],
-            # 'P-521': ["P-521", "NIST P-521", "secp521r1", "prime521v1", "nistp521", "p521"]
+            'P-256': ["NIST P-256", "secp256r1", "prime256v1", "nistp256", "p256"],
+            'P-384': ["NIST P-384", "secp384r1", "prime384v1", "nistp384", "p384"],
+            # 'P-521': ["NIST P-521", "secp521r1", "prime521v1", "nistp521", "p521"]
         }
 
     @property
