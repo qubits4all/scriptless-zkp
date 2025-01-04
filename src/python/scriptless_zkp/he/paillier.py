@@ -33,6 +33,7 @@ from scriptless_zkp.he import (
     OWASP_PBKDF2_SHA256_ITERATIONS
 )
 from scriptless_zkp.number_theory import random_strong_prime, mod_inverse
+from scriptless_zkp.utils import safe_divide
 
 MIN_KEY_SIZE: int = 2048      # Note: Min. key-size for use in Y. Lindell's 2-Party ECDSA protocol w/ 256-bit ECC keys.
 DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key size of 3072 bits.
@@ -547,8 +548,8 @@ class PaillierPrivateKey:
         assert 0 < u < n ** 2, "u must be in the range [1, n^2)."
         # Ensure that L(u, n) is well-defined (i.e., u ≡ 1 mod n).
         assert u % n == 1, "u must be congruent to 1 modulo n."
-
-        return (u - 1) // n
+        
+        return safe_divide(u - 1, n)
 
 
 @dataclass

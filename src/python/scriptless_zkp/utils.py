@@ -85,3 +85,19 @@ def bytes_to_integer(data: bytes, byte_order: str = "big-endian") -> int:
     """
     # Convert & return the byte array to an integer value using the specified byte-order.
     return int.from_bytes(data, byteorder="big" if byte_order == "big-endian" else "little")
+
+
+def safe_divide(dividend: int, divisor: int) -> int:
+    """
+    Divides the dividend by the divisor only if divisible, returning the result as an integer; otherwise raising an
+    exception.
+    :param dividend: The dividend to be divided, expected to be an integer.
+    :param divisor: The divisor by which to divide the dividend, expected to be a non-zero integer.
+    :return: The result of the division (i.e., the quotient), as an integer.
+    :raises AssertionError: If the divisor is zero or the dividend is not divisible by the divisor.
+    """
+    assert isinstance(dividend, int) and isinstance(divisor, int), "The dividend and divisor must be integers."
+    assert divisor != 0, "Cannot divide by zero."
+    assert dividend % divisor == 0, f"{dividend} is not divisible by {divisor}."
+
+    return dividend // divisor
