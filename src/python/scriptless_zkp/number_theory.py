@@ -15,12 +15,17 @@
 """
 This module provides number-theoretic functions that are used by various modules.
 """
+import os
+
+from concurrent import futures
+from concurrent.futures import ThreadPoolExecutor, Future
+from typing import Optional
+
 from Cryptodome.Util import number
 
 from libnum import sqrtmod_prime_power
 
 from scriptless_zkp import utils
-
 
 DEFAULT_FERMAT_PRIMALITY_ROUNDS: int = 10_000
 """Default number of rounds for the Fermat primality test."""
@@ -219,15 +224,55 @@ def is_coprime(a: int, b: int) -> bool:
     return number.GCD(a, b) == 1
 
 
-def random_prime_of_size(size_bits: int) -> int:
+def random_prime_of_size(size_bits: int, parallel: bool = False) -> int:
     """
     Generates a random prime number of the specified size in bits, specifically a prime lying in the range:
         `[2^(size_bits-1) + 1, 2^size_bits - 1]`
 
     :param size_bits: The number of bits to use in the prime number to be generated.
+    :param parallel: Whether to generate the random prime number using parallel processing (default is False).
     :return: A random prime number of the specified bit size.
     """
-    return number.getPrime(size_bits)
+    if parallel:
+        return _parallel_random_prime_of_size(size_bits)
+    else:
+        return number.getPrime(size_bits)
+
+
+def _attempt_probable_prime_generation(size_bits: int) -> Optional[int]:
+    assert size_bits >= 2, "The size for the prime to be generated must be at least 2 bits."
+
+    rand_odd_int: int = utils.random_positive_integer_of_size(size_bits) | 1  # set LSb to ensure integer is odd
+
+    return rand_odd_int if is_probable_prime(rand_odd_int) else None
+
+
+def _parallel_random_prime_of_size(size_bits: int, thread_count: Optional[int] = None) -> int:
+    if thread_count is None:
+        thread_count = min(32, (os.cpu_count() or 1) + 4)
+
+    threadpool_exec = ThreadPoolExecutor(max_workers=thread_count)
+
+    try:
+        while True:
+            prime_futures: list[Future] = []
+            for _ in range(thread_count):
+                prime_futures.append(
+                    threadpool_exec.submit(_attempt_probable_prime_generation, size_bits)
+                )
+
+            for future in futures.as_completed(prime_futures):
+                prime: Optional[int] = future.result()
+                if prime is not None:
+                    # Wait for the first prime to complete being generated.
+                    done, not_done = futures.wait(prime_futures, return_when=futures.FIRST_COMPLETED)
+                    # Cancel any remaining, unfinished prime generation attempts.
+                    for running in not_done:
+                        running.cancel()
+
+                    return prime
+    finally:
+        threadpool_exec.shutdown()
 
 
 def random_strong_prime(size_bits: int) -> int:
@@ -241,7 +286,7 @@ def random_strong_prime(size_bits: int) -> int:
     return number.getStrongPrime(size_bits)
 
 
-def random_safe_prime(size_bits: int) -> int:
+def random_safe_prime(size_bits: int, parallel: bool = False) -> int:
     """
     Generates a random "safe" prime number of the specified size in bits, specifically a prime `p` such that
     ``p = 2*q + 1``, where `q` is also prime (i.e., where ``q = (p - 1) / 2`` is prime). The associated prime `q`,
@@ -257,13 +302,14 @@ def random_safe_prime(size_bits: int) -> int:
     :see: `Fermat primality test <https://en.wikipedia.org/wiki/Fermat_primality_test>`_
 
     :param size_bits: The number of bits to use in the prime number to be generated.
+    :param parallel: Whether to generate the random safe prime number using parallel processing (default is False).
     :return: A random "safe" prime number of the specified bit size (i.e., a prime `p` such that `p = 2*q + 1`, where
             `q` is also prime).
     """
     while True:
         # Generate a random probable prime `q` of size `size_bits-1` bits. (Uses the Miller-Rabin primality test,
         # following a limited prime factor search.)
-        q: int = number.getPrime(size_bits - 1)
+        q: int = random_prime_of_size(size_bits - 1, parallel=parallel)
         p: int = 2 * q + 1
 
         assert p.bit_length() == size_bits, \
