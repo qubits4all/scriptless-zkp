@@ -800,7 +800,7 @@ class PaillierKeyPair:
 
         prime_factor_size_bits: int = key_size_bits // 2
 
-        # Generate two large "safe" primes: `p` and `q`, of roughly equal size (half the key size in bits), which also
+        # Generate two large "strong" primes: `p` and `q`, of roughly equal size (half the key size in bits), which also
         # aren't "too close together" (i.e., `|p - q| >= nroot(n, 4)`), and their product: `n = p * q`.
         p, q, n = cls._generate_primes(prime_factor_size_bits)
 
