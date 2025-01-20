@@ -43,6 +43,10 @@ class ECCPoint2D(ABC):
         self.x = x
         self.y = y
 
+    @property
+    def xy(self) -> tuple[int, int]:
+        return self.x, self.y
+
     # noinspection PyPep8Naming
     @property
     def G(self) -> ECCPoint2D:
@@ -151,7 +155,7 @@ class WeierstrassPoint2D(ECCPoint2D):
 
     @override
     def __init__(self, curve_name: str, x: int, y: int):
-        super().__init__(curve_name, x, y)
+        super().__init__(curve_name, int(x), int(y))
 
         self.curve_config = WeierstrassEllipticCurveConfig.for_curve_name(curve_name)
         self._pt = ECC.construct(curve=self.curve_config.curve, point_x=x, point_y=y).pointQ
@@ -162,19 +166,20 @@ class WeierstrassPoint2D(ECCPoint2D):
 
     @override
     def __eq__(self, other: WeierstrassPoint2D) -> bool:
-        return self.curve_config.has_curve_name(other.curve) and self.x == other.x and self.y == other.y
+        return self.curve_config.has_curve_name(other.curve) and self.xy == other.xy
 
     @override
     def __add__(self, other: WeierstrassPoint2D) -> WeierstrassPoint2D:
         sum: ECC.EccPoint = self._pt.__add__(other._pt)
-        return WeierstrassPoint2D(self.curve, sum.x, sum.y)
+        return WeierstrassPoint2D(self.curve, *sum.xy)
 
     @override
     def __neg__(self) -> WeierstrassPoint2D:
         if self.is_point_at_infinity():
             return self
         else:
-            return WeierstrassPoint2D(self.curve, self.x, -self.y)
+            neg_y: int = self.curve_modulus() - int(self.y)
+            return WeierstrassPoint2D(self.curve, self.x, neg_y)
 
     @override
     def __mul__(self, scalar: int) -> WeierstrassPoint2D:
@@ -182,14 +187,14 @@ class WeierstrassPoint2D(ECCPoint2D):
             return self
         if scalar == 0:
             return WeierstrassPoint2D.identity(self.curve)
-        if scalar < 0 or scalar >= self.curve_order():
-            return self.__mul__(scalar % self.curve_order())
         if scalar == 1:
             return self
+        if scalar < 0 or scalar >= self.curve_order():
+            return self.__mul__(scalar % self.curve_order())
 
         product: ECC.EccPoint = self._pt.__mul__(scalar)
 
-        return WeierstrassPoint2D(self.curve, product.x, product.y)
+        return WeierstrassPoint2D(self.curve, *product.xy)
 
     @classmethod
     @override
@@ -271,23 +276,21 @@ class SECP256K1Point2D(ECCPoint2D):
 
     @override
     def __eq__(self, other: SECP256K1Point2D) -> bool:
-        return self.curve == other.curve and self.x == other.x and self.y == other.y
+        return self.curve == other.curve and self.xy == other.xy
 
-    # TODO: Verify correct handling of a sum that results in the point-at-infinity (identity) element.
-    # Note: This can be easily tested by adding a point to its negation (e.g., `-G + G == (q-1)*G + G == q*G`, where `q`
-    #   is the order of the curve's base point `G`), which should result in the identity element `O`.
     @override
     def __add__(self, other: SECP256K1Point2D) -> SECP256K1Point2D:
-        sum_pt: SECP256K1Point2D.PlainPoint2D = secp256k1.add(self._pt, other._pt)
+        x, y = secp256k1.add(self._pt, other._pt)
 
-        return SECP256K1Point2D(sum_pt[0], sum_pt[1])
+        return SECP256K1Point2D(x, y)
 
     @override
     def __neg__(self) -> SECP256K1Point2D:
         if self.is_point_at_infinity():
             return self
         else:
-            return SECP256K1Point2D(self.x, -self.y)
+            neg_y: int = self.curve_modulus() - int(self.y)
+            return SECP256K1Point2D(self.x, neg_y)
 
     @override
     def __mul__(self, scalar: int) -> SECP256K1Point2D:
@@ -295,10 +298,10 @@ class SECP256K1Point2D(ECCPoint2D):
             return self
         if scalar == 0:
             return SECP256K1Point2D.identity(self.curve)
-        if scalar < 0 or scalar >= self.curve_order():
-            return self.__mul__(scalar % self.curve_order())
         if scalar == 1:
             return self
+        if scalar < 0 or scalar >= self.curve_order():
+            return self.__mul__(scalar % self.curve_order())
 
         product_pt: SECP256K1Point2D.PlainPoint2D = secp256k1.multiply(self._pt, scalar)
 

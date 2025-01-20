@@ -407,8 +407,9 @@ class WeierstrassEllipticCurveContext(EllipticCurveContext):
         if point.is_point_at_infinity():
             return True
 
+        x, y = point.xy
+
         # Verify point's (x, y) coordinates satisfy the Weierstrass elliptic curve equation: `y² = x³ + ax + b mod p`
-        x, y = point.x, point.y
         return (y * y) % self.modulus == (x * x * x + self._a * x + self._b) % self.modulus
 
     def serialize_point(self, point: WeierstrassPoint2D, compress: bool = False) -> bytes:
