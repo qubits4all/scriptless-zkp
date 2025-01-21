@@ -251,15 +251,28 @@ class NIZKDiscreteLogParameterSet:
                 dlog_base_bytes: bytes = base64.b64decode(dlog_base_field)
                 ref_pt_bytes: bytes = base64.b64decode(ref_pt_field)
 
-                dlog_base = ECC.import_key(dlog_base_bytes, curve_name=curve_name)
-                ref_pt = ECC.import_key(ref_pt_bytes, curve_name=curve_name)
+                # Decode the ECC discrete log's assoc. base point from its SEC1 binary encoding.
+                dlog_base: ECC.EccPoint = ECC.import_key(
+                    dlog_base_bytes,
+                    curve_name=curve_name
+                ).pointQ
+                # Decode the ECC discrete log's assoc. "reference" point from its SEC1 binary encoding (i.e., where this
+                # "reference" point equals the base point multiplied by the discrete log).
+                ref_pt: ECC.EccPoint = ECC.import_key(
+                    ref_pt_bytes,
+                    curve_name=curve_name
+                ).pointQ
             except (ValueError, TypeError, binascii.Error) as ex:
                 raise ValueError(
                     f"Invalid NIZK equal discrete logs proof encoding -- failed to decode the set of discrete log"
                     f" product/base point pairs, due to exception: {ex}"
                 ) from ex
             else:
-                dlog_base_and_ref_points.append(ECCDiscreteLogBaseAndProduct((dlog_base, ref_pt)))
+                dlog_base_and_ref_points.append(
+                    ECCDiscreteLogBaseAndProduct(
+                        (dlog_base, ref_pt)
+                    )
+                )
 
         # TODO: Parse the hash algorithm used for the proof, since this should be specified in the parameter-set's
         #   constructor. (Note: This field is already present in the NIZK proof's encoding.)

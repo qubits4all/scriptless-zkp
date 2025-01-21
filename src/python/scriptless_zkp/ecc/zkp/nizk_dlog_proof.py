@@ -190,19 +190,19 @@ class NIZKDiscreteLogParameters:
 Efficient type for an NIZK proof of knowledge of discrete log's signature that auto-casts to an `int`, but not from
 an `int`, providing type safety in function & method calls.
 """
-DiscreteLogProofSignature = NewType('NIZKDiscreteLogProofSignature', int)
+NIZKDiscreteLogProofSignature = NewType('NIZKDiscreteLogProofSignature', int)
 
 
 class NIZKDiscreteLogProof:
     discrete_log_params: NIZKDiscreteLogParameters
     ephemeral_public_key: ECC.EccKey
-    proof_signature: DiscreteLogProofSignature
+    proof_signature: NIZKDiscreteLogProofSignature
 
     def __init__(
             self,
             discrete_log_params: NIZKDiscreteLogParameters,
             ephemeral_public_key: ECC.EccKey,
-            proof_signature: DiscreteLogProofSignature
+            proof_signature: NIZKDiscreteLogProofSignature
     ):
         self.curve_config = discrete_log_params.curve_config
         self.discrete_log_params = discrete_log_params
@@ -240,7 +240,7 @@ class NIZKDiscreteLogProof:
             ) from ve
 
         try:
-            proof_signature: DiscreteLogProofSignature = DiscreteLogProofSignature(number.bytes_to_long(
+            proof_signature: NIZKDiscreteLogProofSignature = NIZKDiscreteLogProofSignature(number.bytes_to_long(
                 base64.b64decode(dlog_proof_fields[3], validate=True)
             ))
         except binascii.Error as bae:
@@ -382,7 +382,7 @@ class NIZKDiscreteLogProver:
         return NIZKDiscreteLogProof(
             NIZKDiscreteLogParameters(self.curve_config, dlog_ref_point, discrete_log_base),
             ephemeral_public_key,
-            DiscreteLogProofSignature(proof_signature)
+            NIZKDiscreteLogProofSignature(proof_signature)
         )
 
     def _generate_ephemeral_keypair(self) -> ECC.EccKey:

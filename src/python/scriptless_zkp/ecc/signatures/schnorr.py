@@ -130,13 +130,14 @@ class SchnorrKeyPair:
                  private key, which has been decrypted using the provided passphrase.
         """
         if encryption_passphrase is str:
+            # Explicitly encode string passphrase as UTF-8 (i.e., as opposed to relying on library to handle encoding).
             passphrase: bytes = encryption_passphrase.encode(encoding='utf-8')
         else:
             passphrase: Optional[bytes] = encryption_passphrase
 
         ecc_key_pair: ECC.EccKey = ECC.import_key(
             encoded=encoded_ecc_private_key,
-            passphrase=passphrase  # Allowed types: bytes | str | None
+            passphrase=passphrase  # Note: Allowed types: bytes | str | None
         )
         return SchnorrKeyPair(context, ecc_key_pair)
 
