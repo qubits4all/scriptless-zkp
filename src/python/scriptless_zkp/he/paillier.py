@@ -33,6 +33,7 @@ from scriptless_zkp.he import (
     OWASP_PBKDF2_SHA256_ITERATIONS
 )
 from scriptless_zkp.number_theory import random_strong_prime, mod_inverse
+from scriptless_zkp.utils import safe_divide
 
 MIN_KEY_SIZE: int = 2048      # Note: Min. key-size for use in Y. Lindell's 2-Party ECDSA protocol w/ 256-bit ECC keys.
 DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key size of 3072 bits.
@@ -544,8 +545,8 @@ class PaillierPrivateKey:
         assert 0 < u < n ** 2, "u must be in the range [1, n^2)."
         # Ensure that L(u, n) is well-defined (i.e., u ≡ 1 mod n).
         assert u % n == 1, "u must be congruent to 1 modulo n."
-
-        return (u - 1) // n
+        
+        return safe_divide(u - 1, n)
 
 
 @dataclass
@@ -662,37 +663,96 @@ class PaillierPublicKey:
 
     def encrypt(self, message: int) -> EncryptedUnsignedInteger:
         """
-        Encrypts a non-negative integer message using the Paillier public key. Encryption of message `m` is performed
-        as:
+        Encrypts a non-negative integer message using the Paillier public key, using a randomly generated blinding
+        factor. Encryption of message `m` is performed as:
             Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the base `r`, of the blinding factor `r^n`, is a random prime
-        in `Z_{n}^*` (i.e., r ∈ [1, n) ).
+        in `Z_{n}^*` (i.e., r ∈ [1, n) excl. {p, q}, where n := p*q ).
         :param message: The non-negative integer message to be encrypted, which must lie in the range `[0, n)` to be a
                valid Paillier message.
         :return: The encrypted non-negative integer message, as a Paillier ciphertext, an integer `c` ∈ [1, n^2).
         :raises ValueError: If the message is out of range for encryption (i.e., if it lies outside of: `[0, n)` ).
         """
-        # Ensure the message `m` is a non-negative integer in the range [0, n) (i.e., `m` ∈ `Z_{n}`, the (additive)
-        # group of integers modulo `n`).
-        if message < 0 or message >= self.n:
-            raise ValueError("Message is out of range for encryption.")
-
         # Generate a random blinding factor (base) `r` in the range [1, n) (i.e., r ∈ `Z_{n}^*`, the multiplicative
         # group of integers modulo `n`).
         # Note: gcd(r, n) = 1 is required, however a random r ∈ `Z_{n}^*` meets this requirement unless r == p or
         #   r == q, where n := p*q (which is highly unlikely to occur).
         blinding_factor_base: int = utils.random_positive_integer(self.n)
 
+        return self.encrypt_with_blinding_factor(message, blinding_factor_base)
+
+    def encrypt_with_blinding_factor(self, message: int, blinding_factor_base: int) -> EncryptedUnsignedInteger:
+        """
+        Encrypts a non-negative integer message using the Paillier public key, with a specified random blinding factor
+        base `r` used in the encryption. Encryption of message `m` is performed as:
+            Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the base `r`, of the blinding factor `r^n`, is a random prime
+        in `Z_{n}^*` (i.e., r ∈ [1, n) ).
+        :param message: The non-negative integer message to be encrypted, which must lie in the range `[0, n)` to be a
+               valid Paillier message.
+        :param blinding_factor_base: The random base `r` of the blinding factor `r^n`, used in the encryption.
+        :return: The encrypted non-negative integer message, as a Paillier ciphertext, an integer `c` ∈ [1, n^2).
+        :raises ValueError: If the message is out of range for encryption (i.e., if it lies outside of: `[0, n)` ), or
+                if the blinding factor base `r` is out of range (i.e., if it lies outside of: `[1, n)` ).
+        """
+        # Ensure the message `m` is a non-negative integer in the range [0, n) (i.e., `m` ∈ `Z_{n}`, the (additive)
+        # group of integers modulo `n`).
+        if message < 0 or message >= self.n:
+            raise ValueError("Message is out of range for encryption.")
+        # Ensure the blinding factor base `r` is a random integer in the range [1, n) (i.e., r ∈ `Z_{n}^*`).
+        elif blinding_factor_base < 1 or blinding_factor_base >= self.n:
+            raise ValueError("Blinding factor base 'r' must be in the range [1, n).")
+
+        return EncryptedUnsignedInteger(
+            self._encrypt_nonnegative_int(message, blinding_factor_base),
+            self
+        )
+
+    def _encrypt_nonnegative_int(self, message: int, blinding_factor_base: int) -> int:
+        """
+        Encrypts a non-negative integer message using the Paillier public key, with a specified random blinding factor
+        base `r` used in the encryption. Encryption of message `m` is performed as:
+            Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the base `r`, of the blinding factor `r^n`, is a random prime
+        in `Z_{n}^*` (i.e., r ∈ [1, n) ).
+        :param message: The non-negative integer message to be encrypted, which must lie in the range `[0, n)` to be a
+               valid Paillier message.
+        :param blinding_factor_base: The random base `r` of the blinding factor `r^n`, used in the encryption.
+        :return: The encrypted non-negative integer message, as a Paillier ciphertext, an integer `c` ∈ [1, n^2).
+        :raises ValueError: If the message is out of range for encryption (i.e., if it lies outside of: `[0, n)` ).
+        """
+        # Ensure the message `m` is a non-negative integer in the range [0, n) (i.e., `m` ∈ `Z_{n}`, the (additive)
+        # group of integers modulo `n`).
+        assert 0 <= message < self.n, "Message must be a non-negative integer in the range [0, n)."
+        # Ensure the blinding factor base `r` is a random integer in the range [1, n) (i.e., r ∈ `Z_{n}^*`).
+        assert 0 < blinding_factor_base < self.n, "Blinding factor base 'r' must be in the range [1, n)."
+
         if self.g == self.n + 1:
             # Use optimization: `g^m ≡ (1 + n*m) mod n^2`, when `g == n + 1`.
-            encrypted: int = (
+            return (
                 (1 + self.n * message) * pow(blinding_factor_base, self.n, self.n2)
             ) % self.n2
         else:
-            encrypted: int = (
+            return (
                 pow(self.g, message, self.n2) * pow(blinding_factor_base, self.n, self.n2)
             ) % self.n2
 
-        return EncryptedUnsignedInteger(encrypted, self)
+    def encrypt_and_return_blinding_factor(self, message: int) -> (EncryptedUnsignedInteger, int):
+        """
+        Encrypts a non-negative integer message using the Paillier public key, returning the encrypted message and the
+        random blinding factor used in the encryption. Encryption of message `m` is performed as:
+            Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the base `r`, of the blinding factor `r^n`, is a random prime
+        in `Z_{n}^*` (i.e., r ∈ [1, n) ).
+        :param message: The non-negative integer message to be encrypted, which must lie in the range `[0, n)` to be a
+               valid Paillier message.
+        :return: A tuple containing the encrypted non-negative integer message, as a Paillier ciphertext, an integer
+                 `c` ∈ [1, n^2), and the random blinding factor `r` used in the encryption.
+        :raises ValueError: If the message is out of range for encryption (i.e., if it lies outside of: `[0, n)` ).
+        """
+        # Generate a random blinding factor (base) `r` in the range [1, n) (i.e., r ∈ `Z_{n}^*`, the multiplicative
+        # group of integers modulo `n`).
+        # Note: gcd(r, n) = 1 is required, however a random r ∈ `Z_{n}^*` meets this requirement unless r == p or
+        #   r == q, where n := p*q (which is highly unlikely to occur).
+        blinding_factor_base: int = utils.random_positive_integer(self.n)
+
+        return self.encrypt_with_blinding_factor(message, blinding_factor_base), blinding_factor_base
 
 
 @dataclass
@@ -740,7 +800,7 @@ class PaillierKeyPair:
 
         prime_factor_size_bits: int = key_size_bits // 2
 
-        # Generate two large "safe" primes: `p` and `q`, of roughly equal size (half the key size in bits), which also
+        # Generate two large "strong" primes: `p` and `q`, of roughly equal size (half the key size in bits), which also
         # aren't "too close together" (i.e., `|p - q| >= nroot(n, 4)`), and their product: `n = p * q`.
         p, q, n = cls._generate_primes(prime_factor_size_bits)
 
@@ -773,6 +833,9 @@ class PaillierKeyPair:
         while True:
             p: int = random_strong_prime(size_bits)
             q: int = random_strong_prime(size_bits)
+            if p == q:
+                continue
+
             n: int = p * q  # candidate public modulus: `n = p * q`
 
             abs_diff: int = abs(p - q)
