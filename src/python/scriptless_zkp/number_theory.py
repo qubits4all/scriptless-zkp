@@ -340,7 +340,7 @@ def random_safe_prime(size_bits: int, parallel: bool = False) -> int:
 
         i = 0
         # Attempt to generate a random safe prime of the specified size in bits.
-        while (p := _attempt_safe_prime_generation(size_bits, parallel=False)) is None:
+        while (p := _attempt_safe_prime_generation(size_bits, attempts=1, parallel=False)) is None:
             i += 1
 
         # DEBUG:
@@ -353,43 +353,42 @@ def random_safe_prime(size_bits: int, parallel: bool = False) -> int:
         return p
 
 
-def _attempt_safe_prime_generation(size_bits: int, parallel: bool = False) -> Optional[int]:
+def _attempt_safe_prime_generation(size_bits: int, attempts: int = 4, parallel: bool = False) -> Optional[int]:
     assert size_bits >= 2, "The size for the safe prime to be generated must be at least 2 bits."
 
     # DEBUG:
     ts_start: float = time.perf_counter()
 
-    # Generate a random probable prime `q` of size `size_bits-1` bits. (Uses the Miller-Rabin primality test,
-    # following a limited prime factor search.)
-    q: int = random_prime_of_size(size_bits - 1, parallel=parallel)
-    p: int = 2 * q + 1
+    for i in range(attempts):
+        # Generate a random probable prime `q` of size `size_bits-1` bits. (Uses the Miller-Rabin primality test,
+        # following a limited prime factor search.)
+        q: int = random_prime_of_size(size_bits - 1, parallel=parallel)
+        p: int = 2 * q + 1
 
-    assert p.bit_length() == size_bits, \
-        f"Generated prime has {p.bit_length()} bits, not the expected {size_bits} bits."
+        assert p.bit_length() == size_bits, \
+            f"Generated prime has {p.bit_length()} bits, not the expected {size_bits} bits."
 
-    # Test if `p` is prime using a single-round Fermat primality test for the base 2, which is sufficient for
-    # satisfying Pocklington's criterion for primality, given that `q` is prime and ``p = 2*q + 1``.
-    is_safe_prime: bool = _fermat_primality_one_round(p, base=2)
+        # Test if `p` is prime using a single-round Fermat primality test for the base 2, which is sufficient for
+        # satisfying Pocklington's criteria for primality, given that `q` is prime and ``p = 2*q + 1``.
+        if _fermat_primality_one_round(p, base=2):
+            # DEBUG:
+            ts_end: float = time.perf_counter()
+            print(f'\nDEBUG: Time to generate a "safe" prime ({size_bits} bits): {ts_end - ts_start:.6f} secs.')
 
-    # DEBUG:
-    ts_end: float = time.perf_counter()
-
-    if is_safe_prime:
-        # DEBUG:
-        print(f'\nDEBUG: Time to generate a "safe" prime ({size_bits} bits): {ts_end - ts_start:.6f} secs.')
-
-        return p  # `p` is a safe prime
+            return p  # `p` is a safe prime
+        else:
+            # DEBUG:
+            ts_end: float = time.perf_counter()
+            print(
+                f'DEBUG: Time to generate probable prime ({size_bits} bits) & check if "safe" prime (not "safe" prime):'
+                f' {ts_end - ts_start:.6f} secs.'
+            )
     else:
-        # DEBUG:
-        print(
-            f'DEBUG: Time to generate probable prime ({size_bits} bits) & check if "safe" prime (not "safe" prime):'
-            f' {ts_end - ts_start:.6f} secs.'
-        )
-
+        # Indicate failure to generate a "safe" prime, after the specified number of attempts.
         return None
 
 
-def _parallel_random_safe_prime(size_bits: int, worker_count: Optional[int] = None) -> int:
+def _parallel_random_safe_prime(size_bits: int, batch_size: int = 4, worker_count: Optional[int] = None) -> int:
     if worker_count is None:
         worker_count = min(32, (os.cpu_count() or 1) + 4)
 
@@ -402,7 +401,12 @@ def _parallel_random_safe_prime(size_bits: int, worker_count: Optional[int] = No
             # Submit worker_count worker tasks to ProcessPoolExecutor, each generating a probable prime, then testing
             # if it's a valid "safe" prime.
             safe_prime_futures: list[Future[Optional[int]]] = [
-                process_pool_exec.submit(_attempt_safe_prime_generation, size_bits, parallel=False)
+                process_pool_exec.submit(
+                    _attempt_safe_prime_generation,
+                    size_bits=size_bits,
+                    attempts=batch_size,
+                    parallel=False        # don't perform Miller-Rabin primality tests in parallel
+                )
                 for _ in range(worker_count)
             ]
 
