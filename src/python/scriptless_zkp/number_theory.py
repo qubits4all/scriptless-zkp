@@ -253,9 +253,9 @@ def _parallel_random_prime_of_size(size_bits: int, thread_count: Optional[int] =
 
     threadpool_exec = ThreadPoolExecutor(max_workers=thread_count)
 
+    prime_futures: list[Future] = []
     try:
         while True:
-            prime_futures: list[Future] = []
             for _ in range(thread_count):
                 prime_futures.append(
                     threadpool_exec.submit(_attempt_probable_prime_generation, size_bits)
@@ -264,14 +264,16 @@ def _parallel_random_prime_of_size(size_bits: int, thread_count: Optional[int] =
             for future in futures.as_completed(prime_futures):
                 prime: Optional[int] = future.result()
                 if prime is not None:
-                    # Wait for the first prime to complete being generated.
-                    done, not_done = futures.wait(prime_futures, return_when=futures.FIRST_COMPLETED)
-                    # Cancel any remaining, unfinished prime generation attempts.
-                    for running in not_done:
-                        running.cancel()
-
                     return prime
+            else:
+                prime_futures.clear()
     finally:
+        # Wait for the first prime to complete being generated.
+        done, not_done = futures.wait(prime_futures, return_when=futures.FIRST_COMPLETED)
+        # Cancel any remaining, unfinished prime generation attempts.
+        for running in not_done:
+            running.cancel()
+
         threadpool_exec.shutdown()
 
 
@@ -343,11 +345,10 @@ def _parallel_random_safe_prime(size_bits: int, thread_count: Optional[int] = No
 
     safe_prime_futures: list[Future[Optional[int]]] = []
     try:
-        safe_prime_candidate: Optional[int] = None
-        while safe_prime_candidate is None:
+        while True:
             for _ in range(thread_count):
                 safe_prime_futures.append(
-                    threadpool_exec.submit(_attempt_safe_prime_generation, size_bits, parallel=False)
+                    threadpool_exec.submit(_attempt_safe_prime_generation, size_bits, parallel=True)
                 )
 
             for future in futures.as_completed(safe_prime_futures):
