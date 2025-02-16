@@ -306,19 +306,67 @@ def random_safe_prime(size_bits: int, parallel: bool = False) -> int:
     :return: A random "safe" prime number of the specified bit size (i.e., a prime `p` such that `p = 2*q + 1`, where
             `q` is also prime).
     """
-    while True:
-        # Generate a random probable prime `q` of size `size_bits-1` bits. (Uses the Miller-Rabin primality test,
-        # following a limited prime factor search.)
-        q: int = random_prime_of_size(size_bits - 1, parallel=parallel)
-        p: int = 2 * q + 1
+    if parallel:
+        return _parallel_random_safe_prime(size_bits)
+    else:
+        # Attempt to generate a random safe prime of the specified size in bits.
+        while (p := _attempt_safe_prime_generation(size_bits, parallel=False)) is None:
+            pass
 
-        assert p.bit_length() == size_bits, \
-            f"Generated prime has {p.bit_length()} bits, not the expected {size_bits} bits."
+        return p
 
-        # Test if `p` is prime using a single-round Fermat primality test for the base 2, which is sufficient for
-        # satisfying Pocklington's criterion for primality, given that `q` is prime and ``p = 2*q + 1``.
-        if _fermat_primality_one_round(p, base=2):
-            return p  # `p` is a safe prime
+
+def _attempt_safe_prime_generation(size_bits: int, parallel: bool = False) -> Optional[int]:
+    assert size_bits >= 2, "The size for the safe prime to be generated must be at least 2 bits."
+
+    # Generate a random probable prime `q` of size `size_bits-1` bits. (Uses the Miller-Rabin primality test,
+    # following a limited prime factor search.)
+    q: int = random_prime_of_size(size_bits - 1, parallel=parallel)
+    p: int = 2 * q + 1
+
+    assert p.bit_length() == size_bits, \
+        f"Generated prime has {p.bit_length()} bits, not the expected {size_bits} bits."
+
+    # Test if `p` is prime using a single-round Fermat primality test for the base 2, which is sufficient for
+    # satisfying Pocklington's criterion for primality, given that `q` is prime and ``p = 2*q + 1``.
+    if _fermat_primality_one_round(p, base=2):
+        return p  # `p` is a safe prime
+    else:
+        return None
+
+
+def _parallel_random_safe_prime(size_bits: int, thread_count: Optional[int] = None) -> int:
+    if thread_count is None:
+        thread_count = min(32, (os.cpu_count() or 1) + 4)
+
+    threadpool_exec = ThreadPoolExecutor(max_workers=thread_count)
+
+    safe_prime_futures: list[Future[Optional[int]]] = []
+    try:
+        safe_prime_candidate: Optional[int] = None
+        while safe_prime_candidate is None:
+            for _ in range(thread_count):
+                safe_prime_futures.append(
+                    threadpool_exec.submit(_attempt_safe_prime_generation, size_bits, parallel=False)
+                )
+
+            for future in futures.as_completed(safe_prime_futures):
+                safe_prime_candidate: Optional[int] = future.result()
+
+                if safe_prime_candidate is not None:
+                    # Safe prime found.
+                    return safe_prime_candidate
+            else:
+                # Clear the list of Futures for the next iteration of parallel safe prime generation attempts.
+                safe_prime_futures.clear()
+    finally:
+        # Wait for the first safe prime to complete being generated.
+        done, not_done = futures.wait(safe_prime_futures, return_when=futures.FIRST_COMPLETED)
+        # Cancel any remaining, unfinished safe prime generation attempts.
+        for running in not_done:
+            running.cancel()
+
+        threadpool_exec.shutdown()
 
 
 def is_probable_prime(n: int) -> bool:
