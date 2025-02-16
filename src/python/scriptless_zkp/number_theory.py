@@ -16,9 +16,11 @@
 This module provides number-theoretic functions that are used by various modules.
 """
 import os
+import time
 
 from concurrent import futures
 from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures.process import ProcessPoolExecutor
 from typing import Optional
 
 from Cryptodome.Util import number
@@ -236,15 +238,37 @@ def random_prime_of_size(size_bits: int, parallel: bool = False) -> int:
     if parallel:
         return _parallel_random_prime_of_size(size_bits)
     else:
-        return number.getPrime(size_bits)
+        # i: int = 0
+        while True:
+            prime_candidate: Optional[int] = _attempt_probable_prime_generation(size_bits)
+
+            # DEBUG
+            # print(f"DEBUG: Attempt #{i} to generate a random prime of size {size_bits} bits.")
+
+            if prime_candidate is not None:
+                return prime_candidate
+
+            # i += 1
 
 
 def _attempt_probable_prime_generation(size_bits: int) -> Optional[int]:
     assert size_bits >= 2, "The size for the prime to be generated must be at least 2 bits."
 
+    # DEBUG
+    # ts_start = time.perf_counter_ns()
+
     rand_odd_int: int = utils.random_positive_integer_of_size(size_bits) | 1  # set LSb to ensure integer is odd
 
-    return rand_odd_int if is_probable_prime(rand_odd_int) else None
+    probable_prime: Optional[int] = rand_odd_int if is_probable_prime(rand_odd_int) else None
+
+    # DEBUG
+    # ts_end = time.perf_counter_ns()
+    # if probable_prime is not None:
+    #     print(f"DEBUG: Time to generate probable prime: {(ts_end - ts_start)/1_000_000_000:.9f} secs.")
+    # else:
+    #     print(f"DEBUG: Time to generate probable prime (no prime found): {(ts_end - ts_start)/1_000_000_000:.9f} secs.")
+
+    return probable_prime
 
 
 def _parallel_random_prime_of_size(size_bits: int, thread_count: Optional[int] = None) -> int:
@@ -311,15 +335,29 @@ def random_safe_prime(size_bits: int, parallel: bool = False) -> int:
     if parallel:
         return _parallel_random_safe_prime(size_bits)
     else:
+        # DEBUG:
+        ts_start: float = time.perf_counter()
+
+        i = 0
         # Attempt to generate a random safe prime of the specified size in bits.
         while (p := _attempt_safe_prime_generation(size_bits, parallel=False)) is None:
-            pass
+            i += 1
+
+        # DEBUG:
+        ts_end: float = time.perf_counter()
+        print(
+            f'\nDEBUG: Total time to generate a "safe" prime ({size_bits} bits): {ts_end - ts_start:.6f} secs.'
+            f' [iterations={i}]'
+        )
 
         return p
 
 
 def _attempt_safe_prime_generation(size_bits: int, parallel: bool = False) -> Optional[int]:
     assert size_bits >= 2, "The size for the safe prime to be generated must be at least 2 bits."
+
+    # DEBUG:
+    ts_start: float = time.perf_counter()
 
     # Generate a random probable prime `q` of size `size_bits-1` bits. (Uses the Miller-Rabin primality test,
     # following a limited prime factor search.)
@@ -331,43 +369,59 @@ def _attempt_safe_prime_generation(size_bits: int, parallel: bool = False) -> Op
 
     # Test if `p` is prime using a single-round Fermat primality test for the base 2, which is sufficient for
     # satisfying Pocklington's criterion for primality, given that `q` is prime and ``p = 2*q + 1``.
-    if _fermat_primality_one_round(p, base=2):
+    is_safe_prime: bool = _fermat_primality_one_round(p, base=2)
+
+    # DEBUG:
+    ts_end: float = time.perf_counter()
+
+    if is_safe_prime:
+        # DEBUG:
+        print(f'\nDEBUG: Time to generate a "safe" prime ({size_bits} bits): {ts_end - ts_start:.6f} secs.')
+
         return p  # `p` is a safe prime
     else:
+        # DEBUG:
+        print(
+            f'DEBUG: Time to generate probable prime ({size_bits} bits) & check if "safe" prime (not "safe" prime):'
+            f' {ts_end - ts_start:.6f} secs.'
+        )
+
         return None
 
 
-def _parallel_random_safe_prime(size_bits: int, thread_count: Optional[int] = None) -> int:
-    if thread_count is None:
-        thread_count = min(32, (os.cpu_count() or 1) + 4)
+def _parallel_random_safe_prime(size_bits: int, worker_count: Optional[int] = None) -> int:
+    if worker_count is None:
+        worker_count = min(32, (os.cpu_count() or 1) + 4)
 
-    threadpool_exec = ThreadPoolExecutor(max_workers=thread_count)
+    with ProcessPoolExecutor(max_workers=worker_count) as process_pool_exec:  # auto-cleanup executor & workers
+        # DEBUG:
+        ts_start: float = time.perf_counter()
 
-    safe_prime_futures: list[Future[Optional[int]]] = []
-    try:
+        i = 0
         while True:
-            for _ in range(thread_count):
-                safe_prime_futures.append(
-                    threadpool_exec.submit(_attempt_safe_prime_generation, size_bits, parallel=True)
-                )
+            # Submit worker_count worker tasks to ProcessPoolExecutor, each generating a probable prime, then testing
+            # if it's a valid "safe" prime.
+            safe_prime_futures: list[Future[Optional[int]]] = [
+                process_pool_exec.submit(_attempt_safe_prime_generation, size_bits, parallel=False)
+                for _ in range(worker_count)
+            ]
 
+            j = 0
             for future in futures.as_completed(safe_prime_futures):
                 safe_prime_candidate: Optional[int] = future.result()
 
                 if safe_prime_candidate is not None:
-                    # Safe prime found.
-                    return safe_prime_candidate
-            else:
-                # Clear the list of Futures for the next iteration of parallel safe prime generation attempts.
-                safe_prime_futures.clear()
-    finally:
-        # Wait for the first safe prime to complete being generated.
-        done, not_done = futures.wait(safe_prime_futures, return_when=futures.FIRST_COMPLETED)
-        # Cancel any remaining, unfinished safe prime generation attempts.
-        for running in not_done:
-            running.cancel()
+                    # DEBUG:
+                    ts_end: float = time.perf_counter()
+                    print(
+                        f'\nDEBUG: Total time to generate a "safe" prime ({size_bits} bits): {ts_end - ts_start:.6f}'
+                        f' secs. [batches={i}, iterations={i*worker_count + j}]'
+                    )
 
-        threadpool_exec.shutdown()
+                    return safe_prime_candidate  # Return found safe prime.
+
+                j += 1
+            i += 1
 
 
 def is_probable_prime(n: int) -> bool:
