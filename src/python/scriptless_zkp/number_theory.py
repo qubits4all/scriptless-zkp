@@ -312,7 +312,12 @@ def random_strong_prime(size_bits: int) -> int:
     return number.getStrongPrime(size_bits)
 
 
-def random_safe_prime(size_bits: int, parallel: bool = False) -> int:
+def random_safe_prime(
+        size_bits: int,
+        parallel: bool = False,
+        attempts_per_worker: int = 4,
+        worker_tasks: Optional[int] = None
+) -> int:
     """
     Generates a random "safe" prime number of the specified size in bits, specifically a prime `p` such that
     ``p = 2*q + 1``, where `q` is also prime (i.e., where ``q = (p - 1) / 2`` is prime). The associated prime `q`,
@@ -333,7 +338,11 @@ def random_safe_prime(size_bits: int, parallel: bool = False) -> int:
             `q` is also prime).
     """
     if parallel:
-        return _parallel_random_safe_prime(size_bits)
+        return _parallel_random_safe_prime(
+            size_bits,
+            attempts_per_worker=attempts_per_worker,
+            worker_count=worker_tasks
+        )
     else:
         # DEBUG:
         ts_start: float = time.perf_counter()
@@ -388,7 +397,11 @@ def _attempt_safe_prime_generation(size_bits: int, attempts: int = 4, parallel: 
         return None
 
 
-def _parallel_random_safe_prime(size_bits: int, batch_size: int = 4, worker_count: Optional[int] = None) -> int:
+def _parallel_random_safe_prime(
+        size_bits: int,
+        attempts_per_worker: int = 4,
+        worker_count: Optional[int] = None
+) -> int:
     if worker_count is None:
         worker_count = min(32, (os.cpu_count() or 1) + 4)
 
@@ -404,7 +417,7 @@ def _parallel_random_safe_prime(size_bits: int, batch_size: int = 4, worker_coun
                 process_pool_exec.submit(
                     _attempt_safe_prime_generation,
                     size_bits=size_bits,
-                    attempts=batch_size,
+                    attempts=attempts_per_worker,
                     parallel=False        # don't perform Miller-Rabin primality tests in parallel
                 )
                 for _ in range(worker_count)
