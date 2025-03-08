@@ -97,6 +97,14 @@ class EllipticCurveContext(ABC):
         return WeierstrassEllipticCurveContext.secp256r1()
 
     @classmethod
+    def secp384r1(cls) -> WeierstrassEllipticCurveContext:
+        return WeierstrassEllipticCurveContext.secp384r1()
+
+    @classmethod
+    def p384(cls) -> WeierstrassEllipticCurveContext:
+        return WeierstrassEllipticCurveContext.secp384r1()
+
+    @classmethod
     def secp256k1(cls) -> SECP256K1EllipticCurveContext:
         return SECP256K1EllipticCurveContext.secp256k1()
 
@@ -277,8 +285,8 @@ class WeierstrassEllipticCurveContext(EllipticCurveContext):
         match primary_curve_name:
             case "P-256":
                 return cls.p256()
-            # case "P-384":
-            #     return cls.p384()
+            case "P-384":
+                return cls.p384()
             # case "P-521":
             #     return cls.p521()
             case _:  # unsupported curve

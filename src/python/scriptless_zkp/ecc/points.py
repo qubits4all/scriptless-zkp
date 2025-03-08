@@ -254,7 +254,6 @@ class WeierstrassPoint2D(ECCPoint2D):
         return WeierstrassPoint2D(curve_name, ecc_pt.x, ecc_pt.y)
 
 
-# TODO: Add elliptic curve config. class for secp256k1 curve, including support for checking if a point is on the curve.
 class SECP256K1Point2D(ECCPoint2D):
     """
     Represents a (2D) point on the secp256k1 elliptic curve, including operations for point addition, point negation,
@@ -350,16 +349,18 @@ class SECP256K1Point2D(ECCPoint2D):
     @staticmethod
     def _encode_point_SEC1(ecc_point: PlainPoint2D, compress: bool = False) -> bytes:
         # If the identity element (i.e., the point-at-infinity), return only the single-byte Code: 0x00.
-        if ecc_point[0] == 0 and ecc_point[1] == 0:
+        if ecc_point == (0, 0):
             return b"\x00"
 
         if compress:
-            code: bytes = b"\x02" if ecc_point[1] & 1 == 0 else b"\x03"  # Code: 0x02 for even y, 0x03 for odd y
-            return code + ecc_point[0].to_bytes(32, "big")  # encode only x-coordinate in big-endian
+            code: bytes = b"\x02" if ecc_point[1] & 1 == 0 else b"\x03"     # Code: 0x02 for even y, 0x03 for odd y
+            return code + ecc_point[0].to_bytes(32, "big")  # Encode only x-coordinate in big-endian
         else:
             code: bytes = b"\x04"  # Code: 0x04 for uncompressed point (i.e., both x & y coordinates are included)
-            return (code + ecc_point[0].to_bytes(32, "big")  # encode x & y coords. in big-endian
-                    + ecc_point[1].to_bytes(32, "big"))
+            return (               # Encode x & y coords. in big-endian
+                code + ecc_point[0].to_bytes(32, "big")
+                + ecc_point[1].to_bytes(32, "big")
+            )
 
     # noinspection PyPep8Naming
     @staticmethod
