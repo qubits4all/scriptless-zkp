@@ -287,8 +287,8 @@ class WeierstrassEllipticCurveContext(EllipticCurveContext):
                 return cls.p256()
             case "P-384":
                 return cls.p384()
-            # case "P-521":
-            #     return cls.p521()
+            case "P-521":
+                return cls.p521()
             case _:  # unsupported curve
                 return None
 
@@ -325,7 +325,7 @@ class WeierstrassEllipticCurveContext(EllipticCurveContext):
         base_point = WeierstrassPoint2D(
             curve_name="P-384",
             x=0xAA87CA22_BE8B0537_8EB1C71E_F320AD74_6E1D3B62_8BA79B98_59F741E0_82542A38_5502F25D_BF55296C_3A545E38_72760AB7,  # big-endian
-            y=0x3617DE4A_96262C6F_5D9E98BF_9292DC29_F8F41DBD_289A147C_E9DA3113_B5F0B8C0_0A60B1CE_1D7E819D_7A431D7C_90EA0E5F  # big-endian90EA0E5F
+            y=0x3617DE4A_96262C6F_5D9E98BF_9292DC29_F8F41DBD_289A147C_E9DA3113_B5F0B8C0_0A60B1CE_1D7E819D_7A431D7C_90EA0E5F   # big-endian
         )
 
         return cls(
@@ -347,6 +347,30 @@ class WeierstrassEllipticCurveContext(EllipticCurveContext):
         (also known as SECP-384r1), named after a common short alias.
         """
         return cls.secp384r1()
+
+    @classmethod
+    def secp521r1(cls) -> WeierstrassEllipticCurveContext:
+        base_point = WeierstrassPoint2D(
+            curve_name="P-521",
+            x=0xc6_858e06b7_0404e9cd_9e3ecb66_2395b442_9c648139_053fb521_f828af60_6b4d3dba_a14b5e77_efe75928_fe1dc127_a2ffa8de_3348b3c1_856a429b_f97e7e31_c2e5bd66,  # big-endian
+            y=0x118_39296a78_9a3bc004_5c8a5fb4_2c7d1bd9_98f54449_579b4468_17afbd17_273e662c_97ee7299_5ef42640_c550b901_3fad0761_353c7086_a272c240_88be9476_9fd16650  # big-endian
+        )
+
+        return cls(
+            curve="P-521",
+            order=0x01ff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_fffffffa_51868783_bf2f966b_7fcc0148_f709a5d0_3bb5c9b8_899c47ae_bb6fb71e_91386409,
+            modulus=0x01ff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff,  # p = 2^521 - 1
+            coeff_a=0x01ff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_ffffffff_fffffffc,  # -3 mod p
+            coeff_b=0x0051_953eb961_8e1c9a1f_929a21a0_b68540ee_a2da725b_99b315f3_b8b48991_8ef109e1_56193951_ec7e937b_1652c0bd_3bb1bf07_3573df88_3d2c34f1_ef451fd4_6b503f00,
+            base_point=base_point,
+            cofactor=1,
+            size_bits=521,
+            curve_aliases=["p521", "NIST P-521", "prime521v1", "secp521r1", "nistp521"]
+        )
+
+    @classmethod
+    def p521(cls) -> WeierstrassEllipticCurveContext:
+        return cls.secp521r1()
 
     @classmethod
     def is_curve_supported(cls, curve_name: str) -> bool:
@@ -371,7 +395,7 @@ class WeierstrassEllipticCurveContext(EllipticCurveContext):
         return {
             'P-256': ["NIST P-256", "secp256r1", "prime256v1", "nistp256", "p256"],
             'P-384': ["NIST P-384", "secp384r1", "prime384v1", "nistp384", "p384"],
-            # 'P-521': ["NIST P-521", "secp521r1", "prime521v1", "nistp521", "p521"]
+            'P-521': ["NIST P-521", "secp521r1", "prime521v1", "nistp521", "p521"]
         }
 
     @property
