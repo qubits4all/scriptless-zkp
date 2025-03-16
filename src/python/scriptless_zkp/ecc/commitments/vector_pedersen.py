@@ -13,11 +13,11 @@
 ###############################################################################
 
 """
-This module provides support for generating sealed Vector Pedersen commitments over elliptic curves, and verifying revealed
-(unsealed) vector commitments. Vector Pedersen commitments allow committing to multiple values in a single operation.
-This commitment scheme also lends itself to limited homomorphic operations, where the sum of two commitments is a 
-commitment to the sum of the committed vectors (up to a blinding factor, equal to the sum of the original commitments' 
-blinding factors).
+This module provides support for generating sealed Vector Pedersen commitments over elliptic curves, and verifying
+revealed (unsealed) vector commitments. Vector Pedersen commitments allow committing to multiple values in a single
+operation. This commitment scheme also lends itself to limited homomorphic operations, where the sum of two commitments
+is a  commitment to the sum of the committed vectors (up to a blinding factor, equal to the sum of the original
+commitments' blinding factors).
 """
 from __future__ import annotations
 
@@ -36,8 +36,8 @@ class VectorPedersenCommitmentContext:
     nums_generators: List[ECC.EccPoint]
     dimension: int
 
-    DEFAULT_NUMS_GENERATOR_NONCE_BASE: int = 1000
-    NUMS_GENERATOR_DOMAIN_SEPARATOR: str = "VectorPedersen-NUMS-Generator"
+    DEFAULT_NUMS_GENERATOR_NONCE_BASE: int = 1
+    NUMS_GENERATOR_DOMAIN_SEPARATOR: str = "Vector-Pedersen-NUMS-Generator"
 
     def __init__(self, curve_config: WeierstrassEllipticCurveConfig, nums_generators: List[ECC.EccPoint]):
         self.curve_config = curve_config
@@ -52,13 +52,14 @@ class VectorPedersenCommitmentContext:
             base_nonce: int = DEFAULT_NUMS_GENERATOR_NONCE_BASE
     ) -> VectorPedersenCommitmentContext:
         """
-        Creates a new Vector Pedersen commitment context for the provided elliptic curve configuration with the specified
-        dimension, using derived NUMS ("Nothing Up My Sleeve") generator points (for which nobody knows the discrete 
-        logarithm), constructed from the provided base nonce and domain separator.
+        Creates a new Vector Pedersen commitment context for the provided elliptic curve configuration with the
+        specified dimension, using derived NUMS ("Nothing Up My Sleeve") generator points (for which nobody knows the
+        discrete logarithm), constructed from the provided base nonce and domain separator.
         
         :param curve_config: the elliptic curve configuration to use for Vector Pedersen commitments.
         :param dimension: the number of values that can be committed to in a single commitment (dimension of vector).
-        :param base_nonce: a base nonce to use when deriving the NUMS generators. Each generator will use base_nonce + i.
+        :param base_nonce: a base nonce to use when deriving the NUMS generators. Each generator will use
+                           `base_nonce + i` for i in [0, dimension).
         :return: a new Vector Pedersen commitment context for the provided elliptic curve configuration and dimension.
         """
         if dimension < 1:
@@ -98,7 +99,10 @@ class VectorPedersenCommitmentContext:
         
         return cls(curve_config, nums_generators)
 
-    def commit(self, committed_values: List[int]) -> Tuple[SealedVectorPedersenCommitment, RevealedVectorPedersenCommitment]:
+    def commit(
+            self,
+            committed_values: List[int]
+    ) -> Tuple[SealedVectorPedersenCommitment, RevealedVectorPedersenCommitment]:
         """
         Commits to the provided values using the Vector Pedersen commitment scheme over the configured elliptic curve,
         returning a sealed commitment and a revealed commitment.
@@ -111,8 +115,8 @@ class VectorPedersenCommitmentContext:
         later (i.e., by sharing the private committed values and the associated random blinding factor/nonce).
         
         Once in the verifier's possession, the private committed values and random blinding factor/nonce can be used to
-        recalculate the Vector Pedersen commitment, and this elliptic curve point is compared with the sealed commitment's
-        curve point, where equal points indicates a valid commitment.
+        recalculate the Vector Pedersen commitment, and this elliptic curve point is compared with the sealed
+        commitment's curve point, where equal points indicates a valid commitment.
         
         :param committed_values: the list of integer values to be committed to, each must lie in the range 
                                 [0, curve_order - 1]. The length must match the dimension of the context.
@@ -172,9 +176,9 @@ class SealedVectorPedersenCommitment:
 
     def __add__(self, other) -> SealedVectorPedersenCommitment:
         """
-        Adds this sealed Vector Pedersen commitment to another sealed Vector Pedersen commitment homomorphically, returning
-        a new sealed commitment that is a commitment to the sum of the committed vectors (up to a blinding factor, equal to
-        the sum of the original commitments' blinding factors).
+        Adds this sealed Vector Pedersen commitment to another sealed Vector Pedersen commitment homomorphically,
+        returning a new sealed commitment that is a commitment to the sum of the committed vectors (up to a blinding
+        factor, equal to the sum of the original commitments' blinding factors).
         
         :param other: the other sealed Vector Pedersen commitment to homomorphically add to this commitment.
         :return: a new sealed Vector Pedersen commitment that is a commitment to the sum of the committed vectors of the
@@ -184,21 +188,21 @@ class SealedVectorPedersenCommitment:
             raise TypeError(f"Unsupported operand type for +: {type(other)}")
         elif self.curve_config != other.curve_config:
             raise ValueError(
-                "Homomorphic addition of (sealed) Vector Pedersen commitments is only supported for commitments on the same"
-                " elliptic curve."
+                "Homomorphic addition of (sealed) Vector Pedersen commitments is only supported for commitments on the"
+                " same elliptic curve."
             )
         elif self.dimension != other.dimension:
             raise ValueError(
-                "Homomorphic addition of (sealed) Vector Pedersen commitments is only supported for commitments with the"
-                " same dimension."
+                "Homomorphic addition of (sealed) Vector Pedersen commitments is only supported for commitments with"
+                " the same dimension."
             )
         
         # Check that the generators are the same
         for i in range(self.dimension):
             if self.nums_generators[i] != other.nums_generators[i]:
                 raise ValueError(
-                    "Homomorphic addition of (sealed) Vector Pedersen commitments is only supported for commitments with"
-                    " the same NUMS generator points."
+                    "Homomorphic addition of (sealed) Vector Pedersen commitments is only supported for commitments"
+                    " with the same NUMS generator points."
                 )
 
         # Add the commitments' curve points together, and return a new sealed commitment.
@@ -229,28 +233,28 @@ class RevealedVectorPedersenCommitment:
         factor, equal to the sum of the original commitments' blinding factors).
         
         :param other: the other revealed Vector Pedersen commitment to homomorphically add to this commitment.
-        :return: a new revealed Vector Pedersen commitment that is a commitment to the sum of the committed vectors of the
-                 original two (revealed) Vector Pedersen commitments.
+        :return: a new revealed Vector Pedersen commitment that is a commitment to the sum of the committed vectors of
+                 the original two (revealed) Vector Pedersen commitments.
         """
         if not isinstance(other, RevealedVectorPedersenCommitment):
             raise TypeError(f"Unsupported operand type for +: {type(other)}")
         elif self.curve_config != other.curve_config:
             raise ValueError(
-                "Homomorphic addition of (revealed) Vector Pedersen commitments is only supported for commitments on the same"
-                " elliptic curve."
+                "Homomorphic addition of (revealed) Vector Pedersen commitments is only supported for commitments on"
+                " the same elliptic curve."
             )
         elif self.dimension != other.dimension:
             raise ValueError(
-                "Homomorphic addition of (revealed) Vector Pedersen commitments is only supported for commitments with the"
-                " same dimension."
+                "Homomorphic addition of (revealed) Vector Pedersen commitments is only supported for commitments with"
+                " the same dimension."
             )
         
         # Check that the generators are the same
         for i in range(self.dimension):
             if self.nums_generators[i] != other.nums_generators[i]:
                 raise ValueError(
-                    "Homomorphic addition of (revealed) Vector Pedersen commitments is only supported for commitments with"
-                    " the same NUMS generator points."
+                    "Homomorphic addition of (revealed) Vector Pedersen commitments is only supported for commitments"
+                    " with the same NUMS generator points."
                 )
 
         # Sum the committed values element-wise
@@ -285,7 +289,10 @@ class RevealedVectorPedersenCommitment:
                 reconstructed_commitment = reconstructed_commitment + (self.nums_generators[i] * value)
 
         # Reject invalid commitments that are not on the curve or that equal the point-at-infinity
-        if not self.curve_config.is_point_on_curve(reconstructed_commitment) or reconstructed_commitment.is_point_at_infinity():
+        if (
+            not self.curve_config.is_point_on_curve(reconstructed_commitment)
+                or reconstructed_commitment.is_point_at_infinity()
+        ):
             return False
 
         # Return whether the provided commitment matches the recalculated commitment
