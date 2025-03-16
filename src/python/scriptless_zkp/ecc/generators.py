@@ -33,7 +33,7 @@ from scriptless_zkp.number_theory import is_quadratic_residue, mod_sqrt
 
 class ECCGeneratorDerivationContext:
     curve_config: WeierstrassEllipticCurveConfig
-    domain_separator: str
+    domain_separator: str | None
 
     MIN_CANDIDATE_MAX_TWEAKS: int = 2
     DEFAULT_CANDIDATE_MAX_TWEAKS: int = 8  # Note: Must be a power of 2.
@@ -150,9 +150,9 @@ class ECCGeneratorDerivationContext:
         nums_generator: ECC.EccPoint | None = self._hunt_and_peck_for_generator(x_coord_candidate, max_tweaks)
         if nums_generator is None:
             if randomize_nonce:
-                suggestion_msg: str = "Try increasing `max_tweaks`."
+                suggestion_msg = "Try increasing `max_tweaks`."
             else:
-                suggestion_msg: str = "Try increasing `max_tweaks` or using a different nonce."
+                suggestion_msg = "Try increasing `max_tweaks` or using a different nonce."
 
             raise ValueError(
                 f"Failed to generate a valid generator point for nonce: {nonce} -- {suggestion_msg}"
@@ -172,7 +172,7 @@ class ECCGeneratorDerivationContext:
             if i >= 0 and i != x_coord_least_sig_bits:
                 # Munge x-coordinate candidate by replacing the last n least-significant bits with the bits of i.
                 mask: int = self._generate_x_coordinate_mask(max_tweaks)
-                x_coord: int = x_coordinate_candidate & mask | i
+                x_coord = x_coordinate_candidate & mask | i
 
             y_squared: int | None = self._check_x_coordinate_is_on_curve(x_coord)
             if y_squared is not None:

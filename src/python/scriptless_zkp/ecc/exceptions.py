@@ -49,7 +49,7 @@ class InvalidECCPointException(Exception):
     def __repr__(self) -> str:
         return f"{type(self).__name__}: {self.msg}"
 
-    def invalid_coordinates(self) -> (int, int):
+    def invalid_coordinates(self) -> tuple[int, int]:
         return self.point_x, self.point_y
 
 
