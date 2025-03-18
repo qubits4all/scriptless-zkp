@@ -54,6 +54,9 @@ class PedersenCommitmentContext:
         :param nonce: a nonce to use when deriving the NUMS generator.
         :return: a new Pedersen commitment context for the provided elliptic curve configuration, using a derived NUMS
                  generator point.
+        :raises ValueError: a NUMS point could not be derived for the provided nonce, given the NUMS point generator's
+                            default max. tweak count. (Note: This is a rare occurrence, and the nonce can be changed to
+                            try again.)
         """
         generator_context: ECCGeneratorDerivationContext = ECCGeneratorDerivationContext(
             curve_config,
@@ -207,11 +210,15 @@ class RevealedPedersenCommitment:
             self.curve_config,
             self.nums_generator,
             self.commitment_point + other.commitment_point,  # homomorphic addition of commitments ( `C(x) + C(y) = C(x + y)` ).
-            self.committed + other.committed,
-            self.blinding_factor + other.blinding_factor
+            (self.committed + other.committed) % self.curve_config.order,
+            (self.blinding_factor + other.blinding_factor) % self.curve_config.order
         )
 
     def verify(self) -> bool:
+        # Check for invalid blinding factor (must be in the range: [1, curve_order - 1] ).
+        if not (0 < self.blinding_factor < self.curve_config.order):
+            return False
+
         # Recalculate the commitment, using the revealed committed value and blinding factor.
         reconstructed_commitment: ECC.EccPoint = (
             self.curve_config.base_point * self.committed + self.nums_generator * self.blinding_factor
