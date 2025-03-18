@@ -257,8 +257,9 @@ class RevealedVectorPedersenCommitment:
                     " with the same NUMS generator points."
                 )
 
-        # Sum the committed values element-wise
-        summed_committed = [self.committed[i] + other.committed[i] for i in range(self.dimension)]
+        # Sum the committed values element-wise (mod curve order) to get the new committed values.
+        summed_committed = [(self.committed[i] + other.committed[i]) % self.curve_config.order
+                            for i in range(self.dimension)]
         
         # Add the commitments' curve points together, along with the committed values and blinding factors,
         # and return a new revealed commitment.
@@ -267,7 +268,7 @@ class RevealedVectorPedersenCommitment:
             self.nums_generators,
             self.commitment_point + other.commitment_point,  # homomorphic addition of commitments
             summed_committed,
-            self.blinding_factor + other.blinding_factor
+            (self.blinding_factor + other.blinding_factor) % self.curve_config.order  # ensure within curve order
         )
 
     def verify(self) -> bool:
@@ -280,10 +281,14 @@ class RevealedVectorPedersenCommitment:
         if len(self.committed) != self.dimension:
             return False
 
-        # Initialize with the blinding factor term
+        # Check for invalid blinding factor (must be in the range: [1, curve_order - 1] ).
+        if self.blinding_factor <= 0 or self.blinding_factor >= self.curve_config.order:
+            return False
+
+        # Initialize with the blinding factor term: `r * G`
         reconstructed_commitment: ECC.EccPoint = self.curve_config.base_point * self.blinding_factor
         
-        # Add the committed value terms (v_i * H_i)
+        # Add the committed value terms: `(v_i * H_i)`
         for i, value in enumerate(self.committed):
             if value != 0:  # Optimization: skip zero values
                 reconstructed_commitment = reconstructed_commitment + (self.nums_generators[i] * value)
