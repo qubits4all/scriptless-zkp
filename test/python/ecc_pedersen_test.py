@@ -100,18 +100,25 @@ class ECCPedersenCommitmentTests(unittest.TestCase):
         # base point, `v1` & `v2` are the committed value scalars, `H` is the NUMS generator point & `C` is the summed
         # commitment point.
         expected_sum_commitment_point: ECC.EccPoint = (
-            self.context.curve_config.base_point * (self.test_committed_value1 + self.test_committed_value2) +
-            self.context.nums_generator * (revealed_commitment1.blinding_factor + revealed_commitment2.blinding_factor)
+            self.context.curve_config.base_point * (
+                (
+                    self.test_committed_value1 + self.test_committed_value2
+                ) % self.context.curve_config.order
+            ) + self.context.nums_generator * ((
+                revealed_commitment1.blinding_factor + revealed_commitment2.blinding_factor
+            ) % self.context.curve_config.order)
         )
         self.assertEqual(expected_sum_commitment_point, summed_revealed_commitment.commitment_point)
 
         self.assertEqual(
             summed_revealed_commitment.committed,
-            self.test_committed_value1 + self.test_committed_value2
+            (self.test_committed_value1 + self.test_committed_value2) % self.context.curve_config.order
         )
         self.assertEqual(
             summed_revealed_commitment.blinding_factor,
-            revealed_commitment1.blinding_factor + revealed_commitment2.blinding_factor
+            (
+                revealed_commitment1.blinding_factor + revealed_commitment2.blinding_factor
+            ) % self.context.curve_config.order
         )
 
         # Verify the summed revealed commitment.
