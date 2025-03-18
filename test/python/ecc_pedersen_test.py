@@ -114,6 +114,9 @@ class ECCPedersenCommitmentTests(unittest.TestCase):
             revealed_commitment1.blinding_factor + revealed_commitment2.blinding_factor
         )
 
+        # Verify the summed revealed commitment.
+        self.assertTrue(summed_revealed_commitment.verify(), "Summed revealed commitment verification failed.")
+
 
 if __name__ == '__main__':
     unittest.main()
