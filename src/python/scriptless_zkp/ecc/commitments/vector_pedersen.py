@@ -61,6 +61,9 @@ class VectorPedersenCommitmentContext:
         :param base_nonce: a base nonce to use when deriving the NUMS generators. Each generator will use
                            `base_nonce + i` for i in [0, dimension).
         :return: a new Vector Pedersen commitment context for the provided elliptic curve configuration and dimension.
+        :raises ValueError: one or more NUMS points could not be derived for the provided nonce sequence, given the
+                            NUMS point generator's default max. tweak count. (Note: This is a rare occurrence, and the
+                            base (starting) nonce can be changed to try again.)
         """
         if dimension < 1:
             raise ValueError(f"Dimension must be at least 1, got {dimension}")
@@ -282,7 +285,7 @@ class RevealedVectorPedersenCommitment:
             return False
 
         # Check for invalid blinding factor (must be in the range: [1, curve_order - 1] ).
-        if self.blinding_factor <= 0 or self.blinding_factor >= self.curve_config.order:
+        if not (0 < self.blinding_factor < self.curve_config.order):
             return False
 
         # Initialize with the blinding factor term: `r * G`
@@ -294,10 +297,9 @@ class RevealedVectorPedersenCommitment:
                 reconstructed_commitment = reconstructed_commitment + (self.nums_generators[i] * value)
 
         # Reject invalid commitments that are not on the curve or that equal the point-at-infinity
-        if (
-            not self.curve_config.is_point_on_curve(reconstructed_commitment)
-                or reconstructed_commitment.is_point_at_infinity()
-        ):
+        if not self.curve_config.is_point_on_curve(
+            reconstructed_commitment
+        ) or reconstructed_commitment.is_point_at_infinity():
             return False
 
         # Return whether the provided commitment matches the recalculated commitment
