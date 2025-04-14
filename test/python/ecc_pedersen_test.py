@@ -26,6 +26,7 @@ class ECCPedersenCommitmentTests(unittest.TestCase):
     )
     test_committed_value1: int = 42
     test_committed_value2: int = 1337
+    test_committed_large_value: int = context.curve_config.order - 1
 
     def test_pedersen_commitment_generation(self):
         sealed_commitment, revealed_commitment = self.context.commit(self.test_committed_value1)
@@ -82,6 +83,32 @@ class ECCPedersenCommitmentTests(unittest.TestCase):
         )
         self.assertEqual(expected_sum_commitment_point, summed_sealed_commitment.commitment_point)
 
+    def test_pedersen_sealed_commitment_homomorphic_addition_with_overflow(self):
+        sealed_commitment1, revealed_commitment1 = self.context.commit(self.test_committed_value2)
+        sealed_commitment2, revealed_commitment2 = self.context.commit(self.test_committed_large_value)
+
+        summed_sealed_commitment: SealedPedersenCommitment = sealed_commitment1 + sealed_commitment2
+
+        self.assertEqual(summed_sealed_commitment.curve_config, self.context.curve_config)
+        self.assertEqual(summed_sealed_commitment.nums_generator, self.context.nums_generator)
+
+        self.assertEqual(
+            summed_sealed_commitment.commitment_point,
+            sealed_commitment1.commitment_point + sealed_commitment2.commitment_point
+        )
+
+        # Verify `C = (v1 + v2) * G + (r1 + r2) * H`, where `r1` & `r2` are the blinding factor scalars, `G` is the
+        # base point, `v1` & `v2` are the committed value scalars, `H` is the NUMS generator point & `C` is the summed
+        # commitment point.
+        expected_sum_commitment_point: ECC.EccPoint = (
+            self.context.curve_config.base_point * (
+                self.test_committed_value2 + self.test_committed_large_value
+            ) + self.context.nums_generator * (
+                revealed_commitment1.blinding_factor + revealed_commitment2.blinding_factor
+            )
+        )
+        self.assertEqual(expected_sum_commitment_point, summed_sealed_commitment.commitment_point)
+
     def test_pedersen_revealed_commitment_homomorphic_addition(self):
         sealed_commitment1, revealed_commitment1 = self.context.commit(self.test_committed_value1)
         sealed_commitment2, revealed_commitment2 = self.context.commit(self.test_committed_value2)
@@ -113,6 +140,48 @@ class ECCPedersenCommitmentTests(unittest.TestCase):
         self.assertEqual(
             summed_revealed_commitment.committed,
             (self.test_committed_value1 + self.test_committed_value2) % self.context.curve_config.order
+        )
+        self.assertEqual(
+            summed_revealed_commitment.blinding_factor,
+            (
+                revealed_commitment1.blinding_factor + revealed_commitment2.blinding_factor
+            ) % self.context.curve_config.order
+        )
+
+        # Verify the summed revealed commitment.
+        self.assertTrue(summed_revealed_commitment.verify(), "Summed revealed commitment verification failed.")
+
+    def test_pedersen_revealed_commitment_homomorphic_addition_with_overflow(self):
+        sealed_commitment1, revealed_commitment1 = self.context.commit(self.test_committed_value2)
+        sealed_commitment2, revealed_commitment2 = self.context.commit(self.test_committed_large_value)
+
+        summed_revealed_commitment = revealed_commitment1 + revealed_commitment2
+
+        self.assertEqual(summed_revealed_commitment.curve_config, self.context.curve_config)
+        self.assertEqual(summed_revealed_commitment.nums_generator, self.context.nums_generator)
+
+        self.assertEqual(
+            summed_revealed_commitment.commitment_point,
+            revealed_commitment1.commitment_point + revealed_commitment2.commitment_point
+        )
+
+        # Verify `C = (v1 + v2) * G + (r1 + r2) * H`, where `r1` & `r2` are the blinding factor scalars, `G` is the
+        # base point, `v1` & `v2` are the committed value scalars, `H` is the NUMS generator point & `C` is the summed
+        # commitment point.
+        expected_sum_commitment_point: ECC.EccPoint = (
+            self.context.curve_config.base_point * (
+                (
+                    self.test_committed_value2 + self.test_committed_large_value
+                ) % self.context.curve_config.order
+            ) + self.context.nums_generator * ((
+                revealed_commitment1.blinding_factor + revealed_commitment2.blinding_factor
+            ) % self.context.curve_config.order)
+        )
+        self.assertEqual(expected_sum_commitment_point, summed_revealed_commitment.commitment_point)
+
+        self.assertEqual(
+            summed_revealed_commitment.committed,
+            (self.test_committed_value2 + self.test_committed_large_value) % self.context.curve_config.order
         )
         self.assertEqual(
             summed_revealed_commitment.blinding_factor,
