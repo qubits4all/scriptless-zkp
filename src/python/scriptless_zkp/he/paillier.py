@@ -252,7 +252,7 @@ class PaillierPrivateKey:
             hmac_hash_algorithm: str = DEFAULT_HMAC_HASH_ALGORITHM,  # default: HMAC-SHA3-256
             salt_size_bytes: int = DEFAULT_PKCS8_HMAC_SALT_BYTES,    # default: 32 bytes (256 bits)
             aes_key_size_bytes: int = DEFAULT_PKCS8_AES_KEY_BYTES    # default: AES-128 key size (16 bytes)
-    ) -> (bytes, dict[str, int]):
+    ) -> tuple[bytes, dict[str, int]]:
         """
         Encrypts the base64-encoded Paillier private key using PKCS#8 password-based key-wrap encryption, using PBKDF2
         for password-based symmetric (AES) key derivation and AES-CBC for encryption of the provided encoded private
@@ -417,7 +417,7 @@ class PaillierPrivateKey:
         return private_key
 
     @staticmethod
-    def _decode_pkcs8_encrypted_private_key(encrypted_private_key: str) -> (bytes, dict[str, int]):
+    def _decode_pkcs8_encrypted_private_key(encrypted_private_key: str) -> tuple[bytes, dict[str, int]]:
         """
         Decodes a PKCS#8 encrypted Paillier private key, including the PBKDF2 parameters used for symmetric key
         derivation, from a string-encoded representation.
@@ -491,9 +491,9 @@ class PaillierPrivateKey:
             ) from vex
 
         # Extract the base64-encoded ASN.1 DER byte string of the encrypted private key.
-        encrypted_private_key: bytes = base64.b64decode(fields[ENCRYPTED_KEY_POS])
+        encrypted_private_key_der: bytes = base64.b64decode(fields[ENCRYPTED_KEY_POS])
 
-        return encrypted_private_key, pbkdf2_params
+        return encrypted_private_key_der, pbkdf2_params
 
     def _encode_to_base64(self) -> str:
         """
@@ -814,7 +814,7 @@ class PaillierKeyPair:
         return cls(pub_key, priv_key)
 
     @staticmethod
-    def _generate_primes(size_bits: int) -> (int, int, int):
+    def _generate_primes(size_bits: int) -> tuple[int, int, int]:
         """
         Generates two "strong" primes (i.e., a prime `p` such that `p - 1` and `p + 1` both have at least one large
         prime factor), using the specified bit-size for each prime. Using "strong" primes thereby provides protection
