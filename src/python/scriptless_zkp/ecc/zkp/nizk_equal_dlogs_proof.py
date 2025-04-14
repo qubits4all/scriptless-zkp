@@ -193,6 +193,9 @@ class NIZKDiscreteLogParameterSet:
         self.hash_algo = hash_algorithm
         self.dlog_base_and_ref_points = dlog_base_and_ref_points
 
+    # TODO: Update this string encoding parser to parse the hash algorithm used for the associated proof, from a
+    #   revised string encoding including the hash algorithm.
+    #   (Note: This field is already present in the NIZK proof's encoding.)
     @classmethod
     def from_string_encoding(cls, encoded_parameter_set: str) -> NIZKDiscreteLogParameterSet:
         """
@@ -251,23 +254,37 @@ class NIZKDiscreteLogParameterSet:
                 dlog_base_bytes: bytes = base64.b64decode(dlog_base_field)
                 ref_pt_bytes: bytes = base64.b64decode(ref_pt_field)
 
-                dlog_base = ECC.import_key(dlog_base_bytes, curve_name=curve_name)
-                ref_pt = ECC.import_key(ref_pt_bytes, curve_name=curve_name)
+                # Decode the ECC discrete log's assoc. base point from its SEC1 binary encoding.
+                dlog_base: ECC.EccPoint = ECC.import_key(
+                    dlog_base_bytes,
+                    curve_name=curve_name
+                ).pointQ
+                # Decode the ECC discrete log's assoc. "reference" point from its SEC1 binary encoding (i.e., where this
+                # "reference" point equals the base point multiplied by the discrete log).
+                ref_pt: ECC.EccPoint = ECC.import_key(
+                    ref_pt_bytes,
+                    curve_name=curve_name
+                ).pointQ
             except (ValueError, TypeError, binascii.Error) as ex:
                 raise ValueError(
                     f"Invalid NIZK equal discrete logs proof encoding -- failed to decode the set of discrete log"
                     f" product/base point pairs, due to exception: {ex}"
                 ) from ex
             else:
-                dlog_base_and_ref_points.append(ECCDiscreteLogBaseAndProduct((dlog_base, ref_pt)))
+                dlog_base_and_ref_points.append(
+                    ECCDiscreteLogBaseAndProduct(
+                        (dlog_base, ref_pt)
+                    )
+                )
 
-        # TODO: Parse the hash algorithm used for the proof, since this should be specified in the parameter-set's
-        #   constructor. (Note: This field is already present in the NIZK proof's encoding.)
         return NIZKDiscreteLogParameterSet(
             curve_config,
             dlog_base_and_ref_points
         )
 
+    # TODO: Modify the string encoding produced by this method to include the hash algorithm to be used for the
+    #   associated zero-knowledge proof. Consider including an encoding version field in the revised encoding.
+    #   (Note: This field is already present in the NIZK proof's encoding.)
     def encode_as_string(self) -> str:
         # noinspection PyCompatibility
         """
