@@ -46,7 +46,7 @@ def generate_random_nonce_pair(
         curve_config: WeierstrassEllipticCurveConfig,
         ecc_base_point: Optional[ECC.EccPoint] = None,
         exclude_one: bool = False
-) -> (int, ECC.EccPoint):
+) -> tuple[int, ECC.EccPoint]:
     """
     Generates a random private nonce scalar (big integer) and an associated nonce elliptic curve (EC) point, constructed
     using the provided EC base point (as `nonce_point := nonce * base_point`), defaulting to the configured elliptic
