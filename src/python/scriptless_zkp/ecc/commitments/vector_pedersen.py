@@ -32,17 +32,13 @@ from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 
 
 class VectorPedersenCommitmentContext:
-    curve_config: WeierstrassEllipticCurveConfig
-    nums_generators: List[ECC.EccPoint]
-    dimension: int
-
     DEFAULT_NUMS_GENERATOR_NONCE_BASE: int = 1
     NUMS_GENERATOR_DOMAIN_SEPARATOR: str = "Vector-Pedersen-NUMS-Generator"
 
     def __init__(self, curve_config: WeierstrassEllipticCurveConfig, nums_generators: List[ECC.EccPoint]):
-        self.curve_config = curve_config
-        self.nums_generators = nums_generators
-        self.dimension = len(nums_generators)
+        self.curve_config: WeierstrassEllipticCurveConfig = curve_config
+        self.nums_generators: List[ECC.EccPoint] = nums_generators
+        self.dimension: int = len(nums_generators)
 
     @classmethod
     def for_curve(
@@ -234,6 +230,22 @@ class RevealedVectorPedersenCommitment:
         Adds this revealed Vector Pedersen commitment to another revealed Vector Pedersen commitment homomorphically,
         returning a new revealed commitment that is a commitment to the sum of the committed vectors (up to a blinding
         factor, equal to the sum of the original commitments' blinding factors).
+
+        Note: Both the sum of committed values, and the sum of blinding factors, are proactively reduced modulo the
+        curve sub-group's order (i.e., to account for a restriction in the underlying Python ECC library in use, which
+        places an upper limit on the size of scalar multipliers used in scalar point multiplication operations).
+        - Such scalar multipliers are always effectively reduced to lie in the range `[0, curve_order - 1]` (where
+        `curve_order` is the elliptic curve sub-group `<G>`'s order), in the course of calculating a scalar point
+        multiplication, with or without this proactive reduction prior to such multiplications.
+        - Both this default sub-group `<G>` (formed by the curve's base point `G`) and the `n` isomorphic curve
+        sub-groups (`<H1>`, `<H2>`, ..., `<Hn>`) (formed by the NUMS generator points: (`H1`, `H2`, ..., `Hn`)), where
+        `n` is the dimension of the vector being committed to, are finite cyclic groups with identical order (size), so
+        the following scalar product equations hold:
+            `a*G = (a+o(G))*G`, `b*H1 = (b+o(H1))*H1`, `b*H2 = (b+o(H2))*H2`, ..., `b*Hn = (b+o(Hn))*Hn`,
+        where `o(G)` and `o(H1)`, `o(H2)`, ..., `o(Hn)` are the orders of the respective sub-groups, indicating
+        exceeding `o(G) - 1`, or `o(H1) - 1`, or `o(H2) - 1`, ..., or `o(Hn) - 1` in a scalar multiplier results in
+        curve points that are equivalent to the same curve point multiplied by a scalar that is first reduced modulo
+        the sub-group's order.
         
         :param other: the other revealed Vector Pedersen commitment to homomorphically add to this commitment.
         :return: a new revealed Vector Pedersen commitment that is a commitment to the sum of the committed vectors of
@@ -261,11 +273,17 @@ class RevealedVectorPedersenCommitment:
                 )
 
         # Sum the committed values element-wise (mod curve order) to get the new committed values.
+        # Note: The committed values' sums are each reduced modulo the curve order q, to avoid running afoul of a
+        #   restriction in the underlying ECC library in use re: the size of scalars used in scalar point
+        #   multiplication.
         summed_committed = [(self.committed[i] + other.committed[i]) % self.curve_config.order
                             for i in range(self.dimension)]
         
         # Add the commitments' curve points together, along with the committed values and blinding factors,
         # and return a new revealed commitment.
+        # Note: The blinding factor sum is proactively reduced modulo q, to avoid running afoul of a restriction in the
+        #   underlying ECC library in use re: the size of scalars used in scalar point multiplication. Otherwise, the
+        #   elliptic curve math is equivalent to a variant without this proactive reduction.
         return RevealedVectorPedersenCommitment(
             self.curve_config,
             self.nums_generators,

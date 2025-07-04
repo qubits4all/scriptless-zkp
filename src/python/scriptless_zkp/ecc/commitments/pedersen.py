@@ -30,15 +30,12 @@ from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 
 
 class PedersenCommitmentContext:
-    curve_config: WeierstrassEllipticCurveConfig
-    nums_generator: ECC.EccPoint
-
     DEFAULT_NUMS_GENERATOR_NONCE: int = 0
     NUMS_GENERATOR_DOMAIN_SEPARATOR: str = "Pedersen-NUMS-Generator"
 
     def __init__(self, curve_config: WeierstrassEllipticCurveConfig, nums_generator: ECC.EccPoint):
-        self.curve_config = curve_config
-        self.nums_generator = nums_generator
+        self.curve_config: WeierstrassEllipticCurveConfig = curve_config
+        self.nums_generator: ECC.EccPoint = nums_generator
 
     @classmethod
     def for_curve(
@@ -187,6 +184,20 @@ class RevealedPedersenCommitment:
         Adds this revealed Pedersen commitment to another revealed Pedersen commitment homomorphically, returning a new
         revealed commitment that is a commitment to the sum of the committed values (up to a blinding factor, equal to
         the sum of the original commitments' blinding factors).
+
+        Note: Both the sum of committed values, and the sum of blinding factors, are proactively reduced modulo the
+        curve sub-group's order (i.e., to account for a restriction in the underlying Python ECC library in use, which
+        places an upper limit on the size of scalar multipliers used in scalar point multiplication operations).
+        - Such scalar multipliers are always effectively reduced to lie in the range `[0, curve_order - 1]` (where
+        `curve_order` is the elliptic curve sub-group `<G>`'s order), in the course of calculating a scalar point
+        multiplication, with or without this proactive reduction prior to such multiplications.
+        - Both this default sub-group `<G>` (formed by the curve's base point `G`) and the
+        isomorphic curve sub-group `<H>` (formed by the NUMS generator point `H`) are finite cyclic groups with
+        identical order (size), so the following scalar product equations hold: `a*G = (a+o(G))*G`, `b*H = (b+o(H))*H`,
+        where `o(G)` and `o(H)` are the orders of the respective sub-groups, indicating exceeding `o(G) - 1` or
+        `o(H) - 1` in a scalar multiplier results in curve points that are equivalent to the same curve point
+        multiplied by a scalar that is first reduced modulo the sub-group's order.
+
         :param other: the other revealed Pedersen commitment to homomorphically add to this commitment.
         :return: a new revealed Pedersen commitment that is a commitment to the sum of the committed values of the
                  original two (revealed) Pedersen commitments.
@@ -206,6 +217,9 @@ class RevealedPedersenCommitment:
 
         # Add the commitments' curve points together, along with the committed (secret) values and blinding factors,
         # and return a new revealed commitment.
+        # Note: The committed values' & blinding factors' sums are each reduced modulo the curve order q, to avoid
+        #   running afoul of a restriction in the underlying ECC library in use re: the size of scalars used in scalar
+        #   point multiplication.
         return RevealedPedersenCommitment(
             self.curve_config,
             self.nums_generator,
