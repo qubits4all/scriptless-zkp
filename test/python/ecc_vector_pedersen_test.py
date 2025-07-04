@@ -154,7 +154,7 @@ class ECCVectorPedersenCommitmentTests(unittest.TestCase):
         expected_sum_commitment_point: ECC.EccPoint = self.context.curve_config.base_point * expected_blinding_factor_sum
         
         for i in range(self.dimension):
-            expected_value_sum = self.test_vector1[i] + self.test_vector2[i]
+            expected_value_sum = (self.test_vector1[i] + self.test_vector2[i]) % self.context.curve_config.order
             expected_sum_commitment_point = expected_sum_commitment_point + (
                 self.context.nums_generators[i] * expected_value_sum
             )
@@ -177,14 +177,16 @@ class ECCVectorPedersenCommitmentTests(unittest.TestCase):
         )
 
         # Verify the summed committed values
-        expected_summed_vector = [self.test_vector1[i] + self.test_vector2[i] for i in range(self.dimension)]
+        expected_summed_vector = [(self.test_vector1[i] + self.test_vector2[i]) % self.context.curve_config.order
+                                  for i in range(self.dimension)]
         self.assertEqual(summed_revealed_commitment.committed, expected_summed_vector)
         
         # Verify the summed blinding factor
         self.assertEqual(
             summed_revealed_commitment.blinding_factor,
-            ((revealed_commitment1.blinding_factor + revealed_commitment2.blinding_factor)
-                % self.context.curve_config.order)
+            (
+                revealed_commitment1.blinding_factor + revealed_commitment2.blinding_factor
+            ) % self.context.curve_config.order
         )
         
         # Verify the summed commitment
@@ -213,8 +215,9 @@ class ECCVectorPedersenCommitmentTests(unittest.TestCase):
         # Verify the summed blinding factor
         self.assertEqual(
             summed_revealed_commitment.blinding_factor,
-            ((revealed_commitment1.blinding_factor + revealed_commitment_lg.blinding_factor)
-             % self.context.curve_config.order)
+            (
+                revealed_commitment1.blinding_factor + revealed_commitment_lg.blinding_factor
+            ) % self.context.curve_config.order
         )
 
         # Verify the summed commitment
