@@ -163,11 +163,31 @@ class SealedPedersenCommitment:
                 " NUMS generator point `H`."
             )
 
+        # Homomorphic addition of commitments: `C(x) + C(y) = C(x + y)`
+        commitment_sum_point: ECC.EccPoint = self.commitment_point + other.commitment_point
+
+        # Reject an invalid summed commitment, if its elliptic curve point is the point-at-infinity.
+        if commitment_sum_point.is_point_at_infinity():
+            raise ValueError(
+                "Homomorphic addition of (sealed) Pedersen commitments resulted in an invalid commitment point"
+                " (point-at-infinity). This homomorphic sum and the underlying commitments should be recalculated,"
+                " using a new NUMS generator point H. -- NOTE: The existing generator H should not be reused for any"
+                " future commitments & should be considered potentially compromised."
+            )
+        # Reject an invalid summed commitment, if its elliptic curve point is not on the curve.
+        elif not self.curve_config.is_point_on_curve(commitment_sum_point):
+            raise ValueError(
+                "Homomorphic addition of (sealed) Pedersen commitments resulted in an invalid commitment point that is"
+                " not on this commitment's elliptic curve. This may indicate that the vector commitments being summed"
+                " may not in fact have been calculated using the same elliptic curve, or that they were otherwise"
+                " incorrectly calculated."
+            )
+
         # Add the commitments' curve points together, and return a new sealed commitment.
         return SealedPedersenCommitment(
             self.curve_config,
             self.nums_generator,
-            self.commitment_point + other.commitment_point  # homomorphic addition of commitments ( `C(x) + C(y) = C(x + y)` ).
+            commitment_sum_point
         )
 
 
@@ -215,6 +235,26 @@ class RevealedPedersenCommitment:
                 " same NUMS generator point `H`."
             )
 
+        # Homomorphic addition of commitments: `C(x) + C(y) = C(x + y)`
+        commitment_sum_point: ECC.EccPoint = self.commitment_point + other.commitment_point
+
+        # Reject an invalid summed commitment, if its elliptic curve point is the point-at-infinity.
+        if commitment_sum_point.is_point_at_infinity():
+            raise ValueError(
+                "Homomorphic addition of (revealed) Pedersen commitments resulted in an invalid commitment point"
+                " (point-at-infinity). This homomorphic sum and the underlying commitments should be recalculated,"
+                " using a new NUMS generator point H. -- NOTE: The existing generator H should not be reused for any"
+                " future commitments & should be considered potentially compromised."
+            )
+        # Reject an invalid summed commitment, if its elliptic curve point is not on the curve.
+        elif not self.curve_config.is_point_on_curve(commitment_sum_point):
+            raise ValueError(
+                "Homomorphic addition of (revealed) Pedersen commitments resulted in an invalid commitment point that is"
+                " not on this commitment's elliptic curve. This may indicate that the vector commitments being summed"
+                " may not in fact have been calculated using the same elliptic curve, or that they were otherwise"
+                " incorrectly calculated."
+            )
+
         # Add the commitments' curve points together, along with the committed (secret) values and blinding factors,
         # and return a new revealed commitment.
         # Note: The committed values' & blinding factors' sums are each reduced modulo the curve order q, to avoid
@@ -223,7 +263,7 @@ class RevealedPedersenCommitment:
         return RevealedPedersenCommitment(
             self.curve_config,
             self.nums_generator,
-            self.commitment_point + other.commitment_point,  # homomorphic addition of commitments ( `C(x) + C(y) = C(x + y)` ).
+            commitment_sum_point,
             (self.committed + other.committed) % self.curve_config.order,
             (self.blinding_factor + other.blinding_factor) % self.curve_config.order
         )

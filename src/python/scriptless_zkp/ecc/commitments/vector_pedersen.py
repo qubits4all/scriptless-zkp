@@ -204,11 +204,32 @@ class SealedVectorPedersenCommitment:
                     " with the same NUMS generator points."
                 )
 
+        # Homomorphic addition of vector commitments:
+        #     `C([x1, x2, ..., xn]) + C([y1, y2, ..., yn]) = C([x1, x2, ..., xn] + [y1, y2, ..., yn])`
+        commitment_sum_point: ECC.EccPoint = self.commitment_point + other.commitment_point
+
+        # Reject an invalid summed vector commitment, if its elliptic curve point is the point-at-infinity.
+        if commitment_sum_point.is_point_at_infinity():
+            raise ValueError(
+                "Homomorphic addition of (sealed) Vector Pedersen commitments resulted in an invalid commitment point"
+                " (point-at-infinity). This homomorphic sum and the underlying commitments should be recalculated,"
+                " using a new NUMS generator points (H1, H2, ... Hn). -- NOTE: The existing generators (H1, H2, ... Hn)"
+                " should not be reused for any future commitments & should be considered potentially compromised."
+            )
+        # Reject invalid summed vector commitment, if its elliptic curve point is not on the curve.
+        if not self.curve_config.is_point_on_curve(commitment_sum_point):
+            raise ValueError(
+                "Homomorphic addition of (sealed) Vector Pedersen commitments resulted in an invalid commitment point"
+                " that is not on this commitment's elliptic curve. This may indicate that the vector commitments being"
+                " summed may not in fact have been calculated using the same elliptic curve, or that they were"
+                " otherwise incorrectly calculated."
+            )
+
         # Add the commitments' curve points together, and return a new sealed commitment.
         return SealedVectorPedersenCommitment(
             self.curve_config,
             self.nums_generators,
-            self.commitment_point + other.commitment_point  # homomorphic addition of commitments
+            commitment_sum_point
         )
 
 
@@ -272,6 +293,27 @@ class RevealedVectorPedersenCommitment:
                     " with the same NUMS generator points."
                 )
 
+        # Homomorphic addition of vector commitments:
+        #     `C([x1, x2, ..., xn]) + C([y1, y2, ..., yn]) = C([x1, x2, ..., xn] + [y1, y2, ..., yn])`
+        commitment_sum_point: ECC.EccPoint = self.commitment_point + other.commitment_point
+
+        # Reject an invalid summed vector commitment, if its elliptic curve point is the point-at-infinity.
+        if commitment_sum_point.is_point_at_infinity():
+            raise ValueError(
+                "Homomorphic addition of (revealed) Vector Pedersen commitments resulted in an invalid commitment point"
+                " (point-at-infinity). This homomorphic sum and the underlying commitments should be recalculated,"
+                " using a new NUMS generator points (H1, H2, ... Hn). -- NOTE: The existing generators (H1, H2, ... Hn)"
+                " should not be reused for any future commitments & should be considered potentially compromised."
+            )
+        # Reject invalid summed vector commitment, if its elliptic curve point is not on the curve.
+        if not self.curve_config.is_point_on_curve(commitment_sum_point):
+            raise ValueError(
+                "Homomorphic addition of (revealed) Vector Pedersen commitments resulted in an invalid commitment point"
+                " that is not on this commitment's elliptic curve. This may indicate that the vector commitments being"
+                " summed may not in fact have been calculated using the same elliptic curve, or that they were"
+                " otherwise incorrectly calculated."
+            )
+
         # Sum the committed values element-wise (mod curve order) to get the new committed values.
         # Note: The committed values' sums are each reduced modulo the curve order q, to avoid running afoul of a
         #   restriction in the underlying ECC library in use re: the size of scalars used in scalar point
@@ -287,7 +329,7 @@ class RevealedVectorPedersenCommitment:
         return RevealedVectorPedersenCommitment(
             self.curve_config,
             self.nums_generators,
-            self.commitment_point + other.commitment_point,  # homomorphic addition of commitments
+            commitment_sum_point,
             summed_committed,
             (self.blinding_factor + other.blinding_factor) % self.curve_config.order  # ensure within curve order
         )
