@@ -27,6 +27,7 @@ from typing import List, Tuple
 from Cryptodome.PublicKey import ECC
 
 from scriptless_zkp.ecc import ecc_utils
+from scriptless_zkp.ecc.exceptions import InvalidECCPedersenCommitmentPointException, InvalidECCPointException
 from scriptless_zkp.ecc.generators import ECCGeneratorDerivationContext
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 
@@ -182,6 +183,20 @@ class SealedVectorPedersenCommitment:
         :param other: the other sealed Vector Pedersen commitment to homomorphically add to this commitment.
         :return: a new sealed Vector Pedersen commitment that is a commitment to the sum of the committed vectors of the
                  original two (sealed) Vector Pedersen commitments.
+        :raises TypeError: if the other commitment is not a SealedVectorPedersenCommitment.
+        :raises ValueError: if the other commitment is not on the same elliptic curve, if the dimensions do not match,
+                or if the NUMS generator points do not match.
+        :raises InvalidECCPedersenCommitmentPointException: if the homomorphic addition results in an invalid commitment
+                point (i.e., the point-at-infinity). In this case, the homomorphic sum and the underlying vector
+                commitments should be recalculated.
+                - Note: In the case the sum of blinding factors equals `0 mod q`, the sum of committed vectors is the
+                zero vector (i.e., `[0, 0, ..., 0] mod q`, where `q` is the configured elliptic curve's sub-group's
+                order), and `O := 0*G + 0*H1 + 0*H2 + ... + 0*Hn`. However, the point-at-infinity is also a result of
+                a number of other combinations of committed value sums and blinding factor sums, so obtaining this
+                outcome does not necessarily indicate that the sum of committed values is the zero vector.
+        :raises InvalidECCPointException: if the homomorphic addition results in an invalid commitment point that is not
+                on the elliptic curve. This may indicate that the vector commitments being summed may not in fact have
+                been calculated using the same elliptic curve, or that they were otherwise incorrectly calculated.
         """
         if not isinstance(other, SealedVectorPedersenCommitment):
             raise TypeError(f"Unsupported operand type for +: {type(other)}")
@@ -196,13 +211,16 @@ class SealedVectorPedersenCommitment:
                 " the same dimension."
             )
         
-        # Check that the generators are the same
-        for i in range(self.dimension):
-            if self.nums_generators[i] != other.nums_generators[i]:
-                raise ValueError(
-                    "Homomorphic addition of (sealed) Vector Pedersen commitments is only supported for commitments"
-                    " with the same NUMS generator points."
-                )
+        # Check that the generators are the same:
+        if (
+            self.dimension != other.dimension
+                or any(self.nums_generators[i] != other.nums_generators[i]
+                       for i in range(self.dimension))
+        ):
+            raise ValueError(
+                "Homomorphic addition of (sealed) Vector Pedersen commitments is only supported for commitments"
+                " with the same NUMS generator points."
+            )
 
         # Homomorphic addition of vector commitments:
         #     `C([x1, x2, ..., xn]) + C([y1, y2, ..., yn]) = C([x1, x2, ..., xn] + [y1, y2, ..., yn])`
@@ -210,19 +228,22 @@ class SealedVectorPedersenCommitment:
 
         # Reject an invalid summed vector commitment, if its elliptic curve point is the point-at-infinity.
         if commitment_sum_point.is_point_at_infinity():
-            raise ValueError(
-                "Homomorphic addition of (sealed) Vector Pedersen commitments resulted in an invalid commitment point"
-                " (point-at-infinity). This homomorphic sum and the underlying commitments should be recalculated,"
-                " using a new NUMS generator points (H1, H2, ... Hn). -- NOTE: The existing generators (H1, H2, ... Hn)"
-                " should not be reused for any future commitments & should be considered potentially compromised."
+            raise InvalidECCPedersenCommitmentPointException(
+                ecc_curve_name=self.curve_config.curve,
+                message="Homomorphic addition of (sealed) Vector Pedersen commitments resulted in an invalid"
+                        " commitment point (point-at-infinity). This homomorphic sum and the underlying commitments"
+                        " should be recalculated."
             )
         # Reject invalid summed vector commitment, if its elliptic curve point is not on the curve.
         if not self.curve_config.is_point_on_curve(commitment_sum_point):
-            raise ValueError(
-                "Homomorphic addition of (sealed) Vector Pedersen commitments resulted in an invalid commitment point"
-                " that is not on this commitment's elliptic curve. This may indicate that the vector commitments being"
-                " summed may not in fact have been calculated using the same elliptic curve, or that they were"
-                " otherwise incorrectly calculated."
+            raise InvalidECCPointException(
+                ecc_curve_name=self.curve_config.curve,
+                point_x=commitment_sum_point.x,
+                point_y=commitment_sum_point.y,
+                msg="Homomorphic addition of (sealed) Vector Pedersen commitments resulted in an invalid commitment"
+                    " point that is not on this commitment's elliptic curve. This may indicate that the vector"
+                    " commitments being summed may not in fact have been calculated using the same elliptic curve, or"
+                    " that they were otherwise incorrectly calculated."
             )
 
         # Add the commitments' curve points together, and return a new sealed commitment.
@@ -271,6 +292,20 @@ class RevealedVectorPedersenCommitment:
         :param other: the other revealed Vector Pedersen commitment to homomorphically add to this commitment.
         :return: a new revealed Vector Pedersen commitment that is a commitment to the sum of the committed vectors of
                  the original two (revealed) Vector Pedersen commitments.
+        :raises TypeError: if the other commitment is not a RevealedVectorPedersenCommitment.
+        :raises ValueError: if the other commitment is not on the same elliptic curve, if the dimensions do not match,
+                or if the NUMS generator points do not match.
+        :raises InvalidECCPedersenCommitmentPointException: if the homomorphic addition results in an invalid commitment
+                point (i.e., the point-at-infinity). In this case, the homomorphic sum and the underlying vector
+                commitments should be recalculated.
+                - Note: In the case the sum of blinding factors equals `0 mod q`, the sum of committed vectors is the
+                zero vector (i.e., `[0, 0, ..., 0] mod q`, where `q` is the configured elliptic curve's sub-group's
+                order), and `O := 0*G + 0*H1 + 0*H2 + ... + 0*Hn`. However, the point-at-infinity is also a result of
+                a number of other combinations of committed value sums and blinding factor sums, so obtaining this
+                outcome does not necessarily indicate that the sum of committed values is the zero vector.
+        :raises InvalidECCPointException: if the homomorphic addition results in an invalid commitment point that is not
+                on the elliptic curve. This may indicate that the vector commitments being summed may not in fact have
+                been calculated using the same elliptic curve, or that they were otherwise incorrectly calculated.
         """
         if not isinstance(other, RevealedVectorPedersenCommitment):
             raise TypeError(f"Unsupported operand type for +: {type(other)}")
@@ -299,19 +334,22 @@ class RevealedVectorPedersenCommitment:
 
         # Reject an invalid summed vector commitment, if its elliptic curve point is the point-at-infinity.
         if commitment_sum_point.is_point_at_infinity():
-            raise ValueError(
-                "Homomorphic addition of (revealed) Vector Pedersen commitments resulted in an invalid commitment point"
-                " (point-at-infinity). This homomorphic sum and the underlying commitments should be recalculated,"
-                " using a new NUMS generator points (H1, H2, ... Hn). -- NOTE: The existing generators (H1, H2, ... Hn)"
-                " should not be reused for any future commitments & should be considered potentially compromised."
+            raise InvalidECCPedersenCommitmentPointException(
+                ecc_curve_name=self.curve_config.curve,
+                message="Homomorphic addition of (revealed) Vector Pedersen commitments resulted in an invalid"
+                        " commitment point (point-at-infinity). This homomorphic sum and the underlying commitments"
+                        " should be recalculated."
             )
         # Reject invalid summed vector commitment, if its elliptic curve point is not on the curve.
         if not self.curve_config.is_point_on_curve(commitment_sum_point):
-            raise ValueError(
-                "Homomorphic addition of (revealed) Vector Pedersen commitments resulted in an invalid commitment point"
-                " that is not on this commitment's elliptic curve. This may indicate that the vector commitments being"
-                " summed may not in fact have been calculated using the same elliptic curve, or that they were"
-                " otherwise incorrectly calculated."
+            raise InvalidECCPointException(
+                ecc_curve_name=self.curve_config.curve,
+                point_x=commitment_sum_point.x,
+                point_y=commitment_sum_point.y,
+                msg="Homomorphic addition of (revealed) Vector Pedersen commitments resulted in an invalid commitment"
+                    " point that is not on this commitment's elliptic curve. This may indicate that the vector"
+                    " commitments being summed may not in fact have been calculated using the same elliptic curve, or"
+                    " that they were otherwise incorrectly calculated."
             )
 
         # Sum the committed values element-wise (mod curve order) to get the new committed values.

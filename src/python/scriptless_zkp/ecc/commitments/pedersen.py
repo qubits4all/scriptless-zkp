@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from Cryptodome.PublicKey import ECC
 
 from scriptless_zkp.ecc import ecc_utils
+from scriptless_zkp.ecc.exceptions import InvalidECCPedersenCommitmentPointException, InvalidECCPointException
 from scriptless_zkp.ecc.generators import ECCGeneratorDerivationContext
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 
@@ -149,6 +150,22 @@ class SealedPedersenCommitment:
         :param other: the other sealed Pedersen commitment to homomorphically add to this commitment.
         :return: a new sealed Pedersen commitment that is a commitment to the sum of the committed values of the
                  original two (sealed) Pedersen commitments.
+        :raises TypeError: if the other operand is not a SealedPedersenCommitment.
+        :raises ValueError: if the other commitment's elliptic curve is not the same as this commitment's curve, or if
+                the other commitment's NUMS generator point is not the same as this commitment's NUMS generator point.
+        :raises InvalidECCPedersenCommitmentPointException: if the homomorphic addition results in an invalid commitment
+                point (i.e., the point-at-infinity). In this case, the homomorphic sum and the underlying commitments
+                should be recalculated, using a new NUMS generator point `H`.
+                - Additionally, in this case the existing generator point `H` should not be reused for any future
+                commitments & should be considered potentially compromised, because this indicates the discrete log of
+                `H` w.r.t. `G` can now be calculated by the committer/prover, and by anyone who later receives the
+                revealed commitment, unless the associated blinding factors' sum is zero.
+                - Note: In the case the sum of blinding factors equals `0 mod q`, the sum of committed values is also
+                `0 mod q`, where the `q` is the configured elliptic curve's sub-group's order (i.e., since
+                `O := 0*G + 0*H`).
+        :raises InvalidECCPointException: if the homomorphic addition results in an invalid commitment point that is not
+                on this commitment's elliptic curve. This may indicate that the commitments being summed may not in fact
+                have been calculated using the same elliptic curve, or that they were otherwise incorrectly calculated.
         """
         if not isinstance(other, SealedPedersenCommitment):
             raise TypeError("Unsupported operand type for +: %s" % type(other))
@@ -168,19 +185,24 @@ class SealedPedersenCommitment:
 
         # Reject an invalid summed commitment, if its elliptic curve point is the point-at-infinity.
         if commitment_sum_point.is_point_at_infinity():
-            raise ValueError(
-                "Homomorphic addition of (sealed) Pedersen commitments resulted in an invalid commitment point"
-                " (point-at-infinity). This homomorphic sum and the underlying commitments should be recalculated,"
-                " using a new NUMS generator point H. -- NOTE: The existing generator H should not be reused for any"
-                " future commitments & should be considered potentially compromised."
+            raise InvalidECCPedersenCommitmentPointException(
+                ecc_curve_name=self.curve_config.curve,
+                message="Homomorphic addition of (sealed) Pedersen commitments resulted in an invalid commitment point"
+                        " (point-at-infinity). This homomorphic sum and the underlying commitments should be"
+                        " recalculated, using a new NUMS generator point H. -- NOTE: The existing generator H should"
+                        " not be reused for any future commitments & should be considered potentially compromised."
             )
         # Reject an invalid summed commitment, if its elliptic curve point is not on the curve.
         elif not self.curve_config.is_point_on_curve(commitment_sum_point):
-            raise ValueError(
-                "Homomorphic addition of (sealed) Pedersen commitments resulted in an invalid commitment point that is"
-                " not on this commitment's elliptic curve. This may indicate that the vector commitments being summed"
-                " may not in fact have been calculated using the same elliptic curve, or that they were otherwise"
-                " incorrectly calculated."
+            raise InvalidECCPointException(
+                ecc_curve_name=self.curve_config.curve,
+                point_x=commitment_sum_point.x,
+                point_y=commitment_sum_point.y,
+                msg="Homomorphic addition of (sealed) Pedersen commitments resulted in an invalid commitment point"
+                    " that is not on this commitment's elliptic curve. This may indicate that the vector commitments"
+                    " being summed may not in fact have been calculated using the same elliptic curve, or that they"
+                    " were otherwise incorrectly calculated.",
+                append_default_message=False
             )
 
         # Add the commitments' curve points together, and return a new sealed commitment.
@@ -221,6 +243,23 @@ class RevealedPedersenCommitment:
         :param other: the other revealed Pedersen commitment to homomorphically add to this commitment.
         :return: a new revealed Pedersen commitment that is a commitment to the sum of the committed values of the
                  original two (revealed) Pedersen commitments.
+        :raises TypeError: if the other operand is not a RevealedPedersenCommitment.
+        :raises ValueError: if the other commitment's elliptic curve is not the same as this commitment's curve, or if
+                the other commitment's NUMS generator point is not the same as this commitment's NUMS generator point.
+        :raises InvalidECCPedersenCommitmentPointException: if the homomorphic addition results in an invalid commitment
+                point (i.e., the point-at-infinity). In this case, the homomorphic sum and the underlying commitments
+                should be recalculated, using a new NUMS generator point `H`.
+                - Additionally, in this case the existing generator point `H` should not be reused for any future
+                commitments & should be considered potentially compromised, because this indicates the discrete log of
+                `H` w.r.t. `G` can be calculated by the committer/prover, and had the revealed commitment been retained
+                this discrete log could be calculated by anyone who receives it, unless the associated blinding factors'
+                sum equals `0 mod q`.
+                - Note: In the case the sum of blinding factors equals `0 mod q`, the sum of committed values is also
+                `0 mod q`, where the `q` is the configured elliptic curve's sub-group's order (i.e., since
+                `O := 0*G + 0*H`).
+        :raises InvalidECCPointException: if the homomorphic addition results in an invalid commitment point that is not
+                on this commitment's elliptic curve. This may indicate that the commitments being summed may not in fact
+                have been calculated using the same elliptic curve, or that they were otherwise incorrectly calculated.
         """
         if not isinstance(other, RevealedPedersenCommitment):
             raise TypeError("Unsupported operand type for +: %s" % type(other))
@@ -240,19 +279,24 @@ class RevealedPedersenCommitment:
 
         # Reject an invalid summed commitment, if its elliptic curve point is the point-at-infinity.
         if commitment_sum_point.is_point_at_infinity():
-            raise ValueError(
-                "Homomorphic addition of (revealed) Pedersen commitments resulted in an invalid commitment point"
-                " (point-at-infinity). This homomorphic sum and the underlying commitments should be recalculated,"
-                " using a new NUMS generator point H. -- NOTE: The existing generator H should not be reused for any"
-                " future commitments & should be considered potentially compromised."
+            raise InvalidECCPedersenCommitmentPointException(
+                ecc_curve_name=self.curve_config.curve,
+                message="Homomorphic addition of (revealed) Pedersen commitments resulted in an invalid commitment point"
+                        " (point-at-infinity). This homomorphic sum and the underlying commitments should be"
+                        " recalculated, using a new NUMS generator point H. -- NOTE: The existing generator H should"
+                        " not be reused for any future commitments & should be considered potentially compromised."
             )
         # Reject an invalid summed commitment, if its elliptic curve point is not on the curve.
         elif not self.curve_config.is_point_on_curve(commitment_sum_point):
-            raise ValueError(
-                "Homomorphic addition of (revealed) Pedersen commitments resulted in an invalid commitment point that is"
-                " not on this commitment's elliptic curve. This may indicate that the vector commitments being summed"
-                " may not in fact have been calculated using the same elliptic curve, or that they were otherwise"
-                " incorrectly calculated."
+            raise InvalidECCPointException(
+                ecc_curve_name=self.curve_config.curve,
+                point_x=commitment_sum_point.x,
+                point_y=commitment_sum_point.y,
+                msg="Homomorphic addition of (revealed) Pedersen commitments resulted in an invalid commitment point"
+                    " that is not on this commitment's elliptic curve. This may indicate that the vector commitments"
+                    " being summed may not in fact have been calculated using the same elliptic curve, or that they"
+                    " were otherwise incorrectly calculated.",
+                append_default_message=False
             )
 
         # Add the commitments' curve points together, along with the committed (secret) values and blinding factors,
