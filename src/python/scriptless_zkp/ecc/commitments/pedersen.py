@@ -21,6 +21,7 @@ original commitments' blinding factors).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Iterable
 
 from Cryptodome.PublicKey import ECC
 
@@ -142,7 +143,64 @@ class SealedPedersenCommitment:
     nums_generator: ECC.EccPoint
     commitment_point: ECC.EccPoint
 
+    def __post_init__(self):
+        """
+        Validates the sealed Pedersen commitment's elliptic curve point, ensuring it is not the point-at-infinity and
+        that it lies on the configured elliptic curve, and that the NUMS generator point is also on the configured
+        elliptic curve.
+        :raises InvalidECCPedersenCommitmentPointException: if the commitment point is the point-at-infinity.
+        :raises InvalidECCPointException: if the commitment point or the NUMS generator point do not lie on the
+                configured elliptic curve.
+        """
+        if self.commitment_point.is_point_at_infinity():
+            raise InvalidECCPedersenCommitmentPointException(
+                ecc_curve_name=self.curve_config.curve,
+                message="Sealed Pedersen commitment point is the point-at-infinity (identity point) on the configured"
+                        " elliptic curve, which is not a valid commitment."
+            )
+        elif not self.curve_config.is_point_on_curve(self.commitment_point):
+            raise InvalidECCPointException(
+                ecc_curve_name=self.curve_config.curve,
+                point_x=self.commitment_point.x,
+                point_y=self.commitment_point.y
+            )
+        elif not self.curve_config.is_point_on_curve(self.nums_generator):
+            raise InvalidECCPointException(
+                ecc_curve_name=self.curve_config.curve,
+                point_x=self.nums_generator.x,
+                point_y=self.nums_generator.y,
+                msg="The sealed Pedersen commitment's NUMS generator point is not on the configured elliptic curve.",
+                append_default_message=False
+            )
+
     def __add__(self, other) -> SealedPedersenCommitment:
+        """
+        Adds this sealed Pedersen commitment to another sealed Pedersen commitment homomorphically, returning a new
+        sealed commitment that is a commitment to the sum of the committed values (up to a blinding factor, equal to
+        the sum of the original commitments' blinding factors).
+        :param other: the other sealed Pedersen commitment to homomorphically add to this commitment.
+        :return: a new sealed Pedersen commitment that is a commitment to the sum of the committed values of the
+                 original two (sealed) Pedersen commitments.
+        :raises TypeError: if the other operand is not a SealedPedersenCommitment.
+        :raises ValueError: if the other commitment's elliptic curve is not the same as this commitment's curve, or if
+                the other commitment's NUMS generator point is not the same as this commitment's NUMS generator point.
+        :raises InvalidECCPedersenCommitmentPointException: if the homomorphic addition results in an invalid commitment
+                point (i.e., the point-at-infinity). In this case, the homomorphic sum and the underlying commitments
+                should be recalculated, using a new NUMS generator point `H`.
+                - Additionally, in this case the existing generator point `H` should not be reused for any future
+                commitments & should be considered potentially compromised, because this indicates the discrete log of
+                `H` w.r.t. `G` can now be calculated by the committer/prover, and by anyone who later receives the
+                revealed commitment, unless the associated blinding factors' sum is zero.
+                - Note: In the case the sum of blinding factors equals `0 mod q`, the sum of committed values is also
+                `0 mod q`, where the `q` is the configured elliptic curve's sub-group's order (i.e., since
+                `O := 0*G + 0*H`).
+        :raises InvalidECCPointException: if the homomorphic addition results in an invalid commitment point that is not
+                on this commitment's elliptic curve. This may indicate that the commitments being summed may not in fact
+                have been calculated using the same elliptic curve, or that they were otherwise incorrectly calculated.
+        """
+        return self.add(other)
+
+    def add(self, other) -> SealedPedersenCommitment:
         """
         Adds this sealed Pedersen commitment to another sealed Pedersen commitment homomorphically, returning a new
         sealed commitment that is a commitment to the sum of the committed values (up to a blinding factor, equal to
@@ -212,6 +270,37 @@ class SealedPedersenCommitment:
             commitment_sum_point
         )
 
+    def sum(self, others: Iterable[SealedPedersenCommitment]) -> SealedPedersenCommitment:
+        """
+        Sums this sealed Pedersen commitment with one or more other sealed Pedersen commitments homomorphically,
+        returning a new sealed commitment that is a commitment to the sum of the committed values (up to a blinding
+        factor, equal to the sum of the original commitments' blinding factors).
+        :param others: an iterable of other sealed Pedersen commitments to homomorphically add to this commitment.
+        :return: a new sealed Pedersen commitment that is a commitment to the sum of the committed values of this
+                 sealed Pedersen commitment and the provided iterable of other sealed Pedersen commitments.
+        :raises TypeError: if the argument provided to the `others` parameter is not an Iterable or is a string.
+        :raises ValueError: if no other sealed Pedersen commitments are provided, if any of the other commitments'
+                elliptic curve is not the same as this commitment's curve, or if any of the other commitments' NUMS
+                generator point is not the same as this commitment's NUMS generator point.
+        """
+        if not isinstance(others, Iterable) or isinstance(others, str):
+            raise TypeError(
+                f"A sealed Pedersen commitment's sum(others) method requires an Iterable of other sealed commitments"
+                f" -- Unsupported type provided: {type(others).__qualname__}"
+            )
+
+        result: SealedPedersenCommitment = self
+        for other in others:
+            result = result + other
+
+        if result == self:
+            # If the result is still the same as the original commitment, then no other commitments were provided.
+            raise ValueError(
+                "A sealed Pedersen commitment's sum(others) method requires at least one sealed commitment be provided."
+            )
+
+        return result
+
 
 @dataclass
 class RevealedPedersenCommitment:
@@ -221,7 +310,87 @@ class RevealedPedersenCommitment:
     committed: int
     blinding_factor: int
 
+    def __post_init__(self):
+        """
+        Validates the revealed Pedersen commitment's elliptic curve point, ensuring it is not the point-at-infinity and
+        that it lies on the configured elliptic curve, and that the NUMS generator point is also on the configured
+        elliptic curve.
+        :raises InvalidECCPedersenCommitmentPointException: if the commitment point is the point-at-infinity.
+        :raises InvalidECCPointException: if the commitment point or the NUMS generator point do not lie on the
+                configured elliptic curve.
+        """
+        if self.commitment_point.is_point_at_infinity():
+            raise InvalidECCPedersenCommitmentPointException(
+                ecc_curve_name=self.curve_config.curve,
+                message="Sealed Pedersen commitment point is the point-at-infinity (identity point) on the configured"
+                        " elliptic curve, which is not a valid commitment."
+            )
+        elif not self.curve_config.is_point_on_curve(self.commitment_point):
+            raise InvalidECCPointException(
+                ecc_curve_name=self.curve_config.curve,
+                point_x=self.commitment_point.x,
+                point_y=self.commitment_point.y
+            )
+        elif not self.curve_config.is_point_on_curve(self.nums_generator):
+            raise InvalidECCPointException(
+                ecc_curve_name=self.curve_config.curve,
+                point_x=self.nums_generator.x,
+                point_y=self.nums_generator.y,
+                msg="The revealed Pedersen commitment's NUMS generator point is not on the configured elliptic curve.",
+                append_default_message=False
+            )
+        elif not (0 <= self.committed < self.curve_config.order):
+            raise ValueError(
+                f"The committed value must be in the range [0, {self.curve_config.order - 1}]."
+            )
+        elif not (1 < self.blinding_factor < self.curve_config.order):
+            raise ValueError(
+                f"The blinding factor must be in the range [2, {self.curve_config.order - 1}]."
+            )
+
     def __add__(self, other) -> RevealedPedersenCommitment:
+        """
+        Adds this revealed Pedersen commitment to another revealed Pedersen commitment homomorphically, returning a new
+        revealed commitment that is a commitment to the sum of the committed values (up to a blinding factor, equal to
+        the sum of the original commitments' blinding factors).
+
+        Note: Both the sum of committed values, and the sum of blinding factors, are proactively reduced modulo the
+        curve sub-group's order (i.e., to account for a restriction in the underlying Python ECC library in use, which
+        places an upper limit on the size of scalar multipliers used in scalar point multiplication operations).
+        - Such scalar multipliers are always effectively reduced to lie in the range `[0, curve_order - 1]` (where
+        `curve_order` is the elliptic curve sub-group `<G>`'s order), in the course of calculating a scalar point
+        multiplication, with or without this proactive reduction prior to such multiplications.
+        - Both this default sub-group `<G>` (formed by the curve's base point `G`) and the
+        isomorphic curve sub-group `<H>` (formed by the NUMS generator point `H`) are finite cyclic groups with
+        identical order (size), so the following scalar product equations hold: `a*G = (a+o(G))*G`, `b*H = (b+o(H))*H`,
+        where `o(G)` and `o(H)` are the orders of the respective sub-groups, indicating exceeding `o(G) - 1` or
+        `o(H) - 1` in a scalar multiplier results in curve points that are equivalent to the same curve point
+        multiplied by a scalar that is first reduced modulo the sub-group's order.
+
+        :param other: the other revealed Pedersen commitment to homomorphically add to this commitment.
+        :return: a new revealed Pedersen commitment that is a commitment to the sum of the committed values of the
+                 original two (revealed) Pedersen commitments.
+        :raises TypeError: if the other operand is not a RevealedPedersenCommitment.
+        :raises ValueError: if the other commitment's elliptic curve is not the same as this commitment's curve, or if
+                the other commitment's NUMS generator point is not the same as this commitment's NUMS generator point.
+        :raises InvalidECCPedersenCommitmentPointException: if the homomorphic addition results in an invalid commitment
+                point (i.e., the point-at-infinity). In this case, the homomorphic sum and the underlying commitments
+                should be recalculated, using a new NUMS generator point `H`.
+                - Additionally, in this case the existing generator point `H` should not be reused for any future
+                commitments & should be considered potentially compromised, because this indicates the discrete log of
+                `H` w.r.t. `G` can be calculated by the committer/prover, and had the revealed commitment been retained
+                this discrete log could be calculated by anyone who receives it, unless the associated blinding factors'
+                sum equals `0 mod q`.
+                - Note: In the case the sum of blinding factors equals `0 mod q`, the sum of committed values is also
+                `0 mod q`, where the `q` is the configured elliptic curve's sub-group's order (i.e., since
+                `O := 0*G + 0*H`).
+        :raises InvalidECCPointException: if the homomorphic addition results in an invalid commitment point that is not
+                on this commitment's elliptic curve. This may indicate that the commitments being summed may not in fact
+                have been calculated using the same elliptic curve, or that they were otherwise incorrectly calculated.
+        """
+        return self.add(other)
+
+    def add(self, other: RevealedPedersenCommitment) -> RevealedPedersenCommitment:
         """
         Adds this revealed Pedersen commitment to another revealed Pedersen commitment homomorphically, returning a new
         revealed commitment that is a commitment to the sum of the committed values (up to a blinding factor, equal to
@@ -311,6 +480,38 @@ class RevealedPedersenCommitment:
             (self.committed + other.committed) % self.curve_config.order,
             (self.blinding_factor + other.blinding_factor) % self.curve_config.order
         )
+
+    def sum(self, others: Iterable[RevealedPedersenCommitment]) -> RevealedPedersenCommitment:
+        """
+        Sums this revealed Pedersen commitment with multiple other revealed Pedersen commitments homomorphically,
+        returning a new revealed commitment that is a commitment to the sum of the committed values (up to a blinding
+        factor, equal to the sum of the original commitments' blinding factors).
+        :param others: an iterable of other revealed Pedersen commitments to homomorphically add to this commitment.
+        :return: a new revealed Pedersen commitment that is a commitment to the sum of the committed values of the
+                 original revealed Pedersen commitments.
+        :raises TypeError: if the argument provided to the `others` parameter is not an Iterable or is a string.
+        :raises ValueError: if no other revealed Pedersen commitments are provided, if any of the other commitments'
+                elliptic curve is not the same as this commitment's curve, or if any of the other commitments' NUMS
+                generator point is not the same as this commitment's NUMS generator point.
+        """
+        if not isinstance(others, Iterable) or isinstance(others, str):
+            raise TypeError(
+                f"A revealed Pedersen commitment's sum(others) method requires an Iterable of other revealed"
+                f" commitments -- Unsupported type provided: {type(others).__qualname__}"
+            )
+
+        result: RevealedPedersenCommitment = self
+        for other in others:
+            result: RevealedPedersenCommitment = result + other
+
+        if result == self:
+            # If the result is still the same as the original commitment, then no other commitments were provided.
+            raise ValueError(
+                "A revealed Pedersen commitment's sum(others) method requires at least one revealed commitment be"
+                " provided."
+            )
+
+        return result
 
     def verify(self) -> bool:
         # Check for invalid blinding factor (must be in the range: [1, curve_order - 1] ).
