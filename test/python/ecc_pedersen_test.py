@@ -16,7 +16,9 @@ import unittest
 
 from Cryptodome.PublicKey import ECC
 
+from scriptless_zkp.ecc.commitments import RevealedPedersenCommitment
 from scriptless_zkp.ecc.commitments.pedersen import PedersenCommitmentContext, SealedPedersenCommitment
+from scriptless_zkp.ecc.exceptions import InvalidECCPedersenCommitmentPointException
 from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 
 
@@ -26,7 +28,8 @@ class ECCPedersenCommitmentTests(unittest.TestCase):
     )
     test_committed_value1: int = 42
     test_committed_value2: int = 1337
-    test_committed_large_value: int = context.curve_config.order - 1
+    test_committed_largest_value: int = context.curve_config.order - 1
+    test_committed_large_value: int = context.curve_config.order - test_committed_value1
 
     def test_pedersen_commitment_generation(self):
         sealed_commitment, revealed_commitment = self.context.commit(self.test_committed_value1)
@@ -89,9 +92,49 @@ class ECCPedersenCommitmentTests(unittest.TestCase):
 
         self.assertEqual(expected_sum_commitment_point, summed_sealed_commitment.commitment_point)
 
+    def test_pedersen_sealed_commitments_with_different_curves_sum_raises_exception(self):
+        """
+        Test that attempting to sum two sealed commitments with different elliptic curves raises an exception.
+        """
+        # Create a second context with a different curve configuration.
+        different_curve_pedersen_context = PedersenCommitmentContext.for_curve(
+            WeierstrassEllipticCurveConfig.secp384r1()
+        )
+
+        # Commit to value using the original context.
+        sealed_commitment1, _ = self.context.commit(self.test_committed_value1)
+        # Commit to another value using the different curve context.
+        sealed_commitment2, _ = different_curve_pedersen_context.commit(self.test_committed_value2)
+
+        # Attempt to sum the two sealed commitments, which should raise an exception.
+        with self.assertRaises(ValueError):
+            sealed_commitment1 + sealed_commitment2
+
+    def test_pedersen_sealed_commitments_with_different_nums_generators_sum_raises_exception(self):
+        """
+        Test that attempting to sum two sealed commitments with different NUMS generators raises an exception.
+        """
+        different_nums_generator_nonce: int = 42
+
+        # Create a second context with a different NUMS generator.
+        different_nums_generator_pedersen_context = PedersenCommitmentContext.for_curve(
+            self.context.curve_config,
+            nonce=different_nums_generator_nonce
+        )
+
+        # Commit to value using the original context.
+        sealed_commitment1, _ = self.context.commit(self.test_committed_value1)
+
+        # Commit to another value using the other Pedersen context w/ a different NUMS generator point.
+        sealed_commitment2, _ = different_nums_generator_pedersen_context.commit(self.test_committed_value2)
+
+        # Attempt to sum the two sealed commitments, which should raise an exception.
+        with self.assertRaises(ValueError):
+            sealed_commitment1 + sealed_commitment2
+
     def test_pedersen_sealed_commitment_homomorphic_addition_with_overflow(self):
         sealed_commitment1, revealed_commitment1 = self.context.commit(self.test_committed_value2)
-        sealed_commitment2, revealed_commitment2 = self.context.commit(self.test_committed_large_value)
+        sealed_commitment2, revealed_commitment2 = self.context.commit(self.test_committed_largest_value)
 
         summed_sealed_commitment: SealedPedersenCommitment = sealed_commitment1 + sealed_commitment2
 
@@ -111,7 +154,7 @@ class ECCPedersenCommitmentTests(unittest.TestCase):
         #   use re: the size of scalars used in scalar point multiplication.
         expected_sum_commitment_point: ECC.EccPoint = self.context.curve_config.base_point * (
             (
-                self.test_committed_value2 + self.test_committed_large_value
+                self.test_committed_value2 + self.test_committed_largest_value
             ) % self.context.curve_config.order
         ) + self.context.nums_generator * (
             (
@@ -120,6 +163,86 @@ class ECCPedersenCommitmentTests(unittest.TestCase):
         )
 
         self.assertEqual(expected_sum_commitment_point, summed_sealed_commitment.commitment_point)
+
+    def test_pedersen_sealed_commitment_sum_to_point_at_infinity_with_blinding_factors_eq_zero(self):
+        """
+        Test one case where the homomorphic sum of two sealed commitments results in the point-at-infinity (identity
+        point) on the configured elliptic curve, which is not a valid commitment. The attempted sum should raise an
+        `InvalidECCPedersenCommitmentPointException` in this case.
+
+        In this case, the two sealed commitments are constructed such that their committed values sum to `0` modulo
+        the curve sub-group's order, and their blinding factors are both zero (an invalid blinding factor, but chosen
+        here to ensure the sum results in the point-at-infinity).
+        """
+        # Using an (invalid) blinding factor of zero for both commitments to ensure the sum results in the point-at-infinity.
+        zero_blinding_factor: int = 0
+
+        # Manually construct the 1st sealed commitment's commitment point using blinding factor of zero.
+        commitment1_point: ECC.EccPoint = (
+            self.context.curve_config.base_point * self.test_committed_value1
+            + self.context.nums_generator * zero_blinding_factor
+        )
+        # Create the 1st sealed commitment using the 1st manually constructed commitment point.
+        sealed_commitment1 = SealedPedersenCommitment(
+            curve_config=self.context.curve_config,
+            nums_generator=self.context.nums_generator,
+            commitment_point=commitment1_point
+        )
+
+        # Manually construct the 2nd sealed commitment's commitment point using blinding factor of zero.
+        commitment2_point: ECC.EccPoint = (
+            self.context.curve_config.base_point * self.test_committed_large_value
+            + self.context.nums_generator * zero_blinding_factor
+        )
+        # Create the 2nd sealed commitment using the 2nd manually constructed commitment point.
+        sealed_commitment2 = SealedPedersenCommitment(
+            curve_config=self.context.curve_config,
+            nums_generator=self.context.nums_generator,
+            commitment_point=commitment2_point
+        )
+
+        # Test a case where the sum of two sealed commitments results in the point-at-infinity.
+        # This can happen if the committed values sum to `0` modulo the curve sub-group's order, and the blinding
+        # factors sum to the same value (or both are zero, as in this case; technically an invalid blinding factor
+        # value).
+        with self.assertRaises(InvalidECCPedersenCommitmentPointException):
+            sealed_commitment1 + sealed_commitment2
+
+    def test_pedersen_sealed_commitment_sum_to_point_at_infinity_with_blinding_factors_sum_to_zero(self):
+        blinding_factor1: int = 42
+        blinding_factor2: int = self.context.curve_config.order - blinding_factor1
+
+        # Manually construct the 1st sealed commitment's commitment point using a specific blinding factor chosen to
+        # sum to 0 modulo the curve sub-group's order (i.e., when added to the 2nd commitment's blinding factor).
+        commitment1_point: ECC.EccPoint = (
+                self.context.curve_config.base_point * self.test_committed_value1
+                + self.context.nums_generator * blinding_factor1
+        )
+        # Create the 1st sealed commitment using the 1st manually constructed commitment point.
+        sealed_commitment1 = SealedPedersenCommitment(
+            curve_config=self.context.curve_config,
+            nums_generator=self.context.nums_generator,
+            commitment_point=commitment1_point
+        )
+
+        # Manually construct the 2nd sealed commitment's commitment point using a specific blinding factor chosen to
+        # sum to 0 modulo the curve sub-group's order (i.e., when added to the 2nd commitment's blinding factor).
+        commitment2_point: ECC.EccPoint = (
+                self.context.curve_config.base_point * self.test_committed_large_value
+                + self.context.nums_generator * blinding_factor2
+        )
+        # Create the 2nd sealed commitment using the 2nd manually constructed commitment point.
+        sealed_commitment2 = SealedPedersenCommitment(
+            curve_config=self.context.curve_config,
+            nums_generator=self.context.nums_generator,
+            commitment_point=commitment2_point
+        )
+
+        # Test a case where the sum of two sealed commitments results in the point-at-infinity.
+        # This can happen if the committed values sum to `0` modulo the curve sub-group's order, and the blinding
+        # factors sum to the same value.
+        with self.assertRaises(InvalidECCPedersenCommitmentPointException):
+            sealed_commitment1 + sealed_commitment2
 
     def test_pedersen_revealed_commitment_homomorphic_addition(self):
         sealed_commitment1, revealed_commitment1 = self.context.commit(self.test_committed_value1)
@@ -180,9 +303,49 @@ class ECCPedersenCommitmentTests(unittest.TestCase):
         # Verify the summed revealed commitment.
         self.assertTrue(summed_revealed_commitment.verify(), "Summed revealed commitment verification failed.")
 
+    def test_pedersen_revealed_commitments_with_different_curves_sum_raises_exception(self):
+        """
+        Test that attempting to sum two revealed commitments with different elliptic curves raises an exception.
+        """
+        # Create a second context with a different curve configuration.
+        different_curve_pedersen_context = PedersenCommitmentContext.for_curve(
+            WeierstrassEllipticCurveConfig.secp384r1()
+        )
+
+        # Commit to value using the original context.
+        _, revealed_commitment1 = self.context.commit(self.test_committed_value1)
+        # Commit to another value using the different curve context.
+        _, revealed_commitment2 = different_curve_pedersen_context.commit(self.test_committed_value2)
+
+        # Attempt to sum the two revealed commitments, which should raise an exception.
+        with self.assertRaises(ValueError):
+            revealed_commitment1 + revealed_commitment2
+
+    def test_pedersen_revealed_commitments_with_different_nums_generators_sum_raises_exception(self):
+        """
+        Test that attempting to sum two revealed commitments with different NUMS generators raises an exception.
+        """
+        different_nums_generator_nonce: int = 42
+
+        # Create a second context with a different NUMS generator.
+        different_nums_generator_pedersen_context = PedersenCommitmentContext.for_curve(
+            self.context.curve_config,
+            nonce=different_nums_generator_nonce
+        )
+
+        # Commit to value using the original context.
+        _, revealed_commitment1 = self.context.commit(self.test_committed_value1)
+
+        # Commit to another value using the other Pedersen context w/ a different NUMS generator point.
+        _, revealed_commitment2 = different_nums_generator_pedersen_context.commit(self.test_committed_value2)
+
+        # Attempt to sum the two revealed commitments, which should raise an exception.
+        with self.assertRaises(ValueError):
+            revealed_commitment1 + revealed_commitment2
+
     def test_pedersen_revealed_commitment_homomorphic_addition_with_overflow(self):
         sealed_commitment1, revealed_commitment1 = self.context.commit(self.test_committed_value2)
-        sealed_commitment2, revealed_commitment2 = self.context.commit(self.test_committed_large_value)
+        sealed_commitment2, revealed_commitment2 = self.context.commit(self.test_committed_largest_value)
 
         summed_revealed_commitment = revealed_commitment1 + revealed_commitment2
 
@@ -201,7 +364,7 @@ class ECCPedersenCommitmentTests(unittest.TestCase):
         expected_sum_commitment_point: ECC.EccPoint = (
             self.context.curve_config.base_point * (
                 (
-                    self.test_committed_value2 + self.test_committed_large_value
+                    self.test_committed_value2 + self.test_committed_largest_value
                 ) % self.context.curve_config.order
             ) + self.context.nums_generator * ((
                 revealed_commitment1.blinding_factor + revealed_commitment2.blinding_factor
@@ -210,7 +373,7 @@ class ECCPedersenCommitmentTests(unittest.TestCase):
         self.assertEqual(expected_sum_commitment_point, summed_revealed_commitment.commitment_point)
 
         expected_committed_sum: int = (
-            self.test_committed_value2 + self.test_committed_large_value
+            self.test_committed_value2 + self.test_committed_largest_value
         ) % self.context.curve_config.order
 
         self.assertEqual(
@@ -229,6 +392,94 @@ class ECCPedersenCommitmentTests(unittest.TestCase):
 
         # Verify the summed revealed commitment.
         self.assertTrue(summed_revealed_commitment.verify(), "Summed revealed commitment verification failed.")
+
+    def test_pedersen_revealed_commitment_sum_to_point_at_infinity_with_blinding_factors_eq_zero(self):
+        """
+        Test one case where the homomorphic sum of two revealed commitments results in the point-at-infinity (identity
+        point) on the configured elliptic curve, which is not a valid commitment. The attempted sum should raise an
+        `InvalidECCPedersenCommitmentPointException` in this case.
+
+        In this case, the two revealed commitments are constructed such that their committed values sum to `0` modulo
+        the curve sub-group's order, and their blinding factors are both zero (an invalid blinding factor, but chosen
+        here to ensure the sum results in the point-at-infinity).
+        """
+        # Using an (invalid) blinding factor of zero for both commitments to ensure the sum results in the point-at-infinity.
+        zero_blinding_factor: int = 0
+
+        # Manually construct the 1st revealed commitment's commitment point using blinding factor of zero.
+        commitment1_point: ECC.EccPoint = (
+            self.context.curve_config.base_point * self.test_committed_value1
+            + self.context.nums_generator * zero_blinding_factor
+        )
+        # Create the 1st revealed commitment using the 1st manually constructed commitment point.
+        revealed_commitment1 = RevealedPedersenCommitment(
+            curve_config=self.context.curve_config,
+            nums_generator=self.context.nums_generator,
+            commitment_point=commitment1_point,
+            committed=self.test_committed_value1,
+            blinding_factor=zero_blinding_factor
+        )
+
+        # Manually construct the 2nd revealed commitment's commitment point using blinding factor of zero.
+        commitment2_point: ECC.EccPoint = (
+            self.context.curve_config.base_point * self.test_committed_large_value
+            + self.context.nums_generator * zero_blinding_factor
+        )
+        # Create the 2nd revealed commitment using the 2nd manually constructed commitment point.
+        revealed_commitment2 = RevealedPedersenCommitment(
+            curve_config=self.context.curve_config,
+            nums_generator=self.context.nums_generator,
+            commitment_point=commitment2_point,
+            committed=self.test_committed_large_value,
+            blinding_factor=zero_blinding_factor
+        )
+
+        # Test a case where the sum of two revealed commitments results in the point-at-infinity.
+        # This can happen if the committed values sum to `0` modulo the curve sub-group's order, and the blinding
+        # factors sum to the same value (or both are zero, as in this case; technically an invalid blinding factor
+        # value).
+        with self.assertRaises(InvalidECCPedersenCommitmentPointException):
+            revealed_commitment1 + revealed_commitment2
+
+    def test_pedersen_revealed_commitment_sum_to_point_at_infinity_with_blinding_factors_sum_to_zero(self):
+        blinding_factor1: int = 42
+        blinding_factor2: int = self.context.curve_config.order - blinding_factor1
+
+        # Manually construct the 1st revealed commitment's commitment point using a specific blinding factor chosen to
+        # sum to 0 modulo the curve sub-group's order (i.e., when added to the 2nd commitment's blinding factor).
+        commitment1_point: ECC.EccPoint = (
+            self.context.curve_config.base_point * self.test_committed_value1
+            + self.context.nums_generator * blinding_factor1
+        )
+        # Create the 1st revealed commitment using the 1st manually constructed commitment point.
+        revealed_commitment1 = RevealedPedersenCommitment(
+            curve_config=self.context.curve_config,
+            nums_generator=self.context.nums_generator,
+            commitment_point=commitment1_point,
+            committed=self.test_committed_value1,
+            blinding_factor=blinding_factor1
+        )
+
+        # Manually construct the 2nd revealed commitment's commitment point using a specific blinding factor chosen to
+        # sum to 0 modulo the curve sub-group's order (i.e., when added to the 2nd commitment's blinding factor).
+        commitment2_point: ECC.EccPoint = (
+            self.context.curve_config.base_point * self.test_committed_large_value
+            + self.context.nums_generator * blinding_factor2
+        )
+        # Create the 2nd revealed commitment using the 2nd manually constructed commitment point.
+        revealed_commitment2 = RevealedPedersenCommitment(
+            curve_config=self.context.curve_config,
+            nums_generator=self.context.nums_generator,
+            commitment_point=commitment2_point,
+            committed=self.test_committed_large_value,
+            blinding_factor=blinding_factor2
+        )
+
+        # Test a case where the sum of two revealed commitments results in the point-at-infinity.
+        # This can happen if the committed values sum to `0` modulo the curve sub-group's order, and the blinding
+        # factors sum to the same value.
+        with self.assertRaises(InvalidECCPedersenCommitmentPointException):
+            revealed_commitment1 + revealed_commitment2
 
 
 if __name__ == '__main__':
