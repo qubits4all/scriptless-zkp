@@ -982,6 +982,16 @@ class EncryptedUnsignedInteger:
         original plaintext non-negative integer encrypted as this ciphertext, `s` is the provided plaintext non-negative
         integer scalar, and `c2'` is the resulting homomorphic sum, a Paillier ciphertext encrypting the plaintext sum:
         `p1 + s`).
+
+        - Note: The special case of a scalar summand of 0 is a no-op for this method, returning the original ciphertext
+        unchanged. For use in secure multi-party computation (MPC) protocols, it's recommended to use the
+        `add_and_obfuscate(...)` method here instead of this `add(...)` method, if a scalar summand of 0 could be
+        provided by the protocol and both the original ciphertext & sum ciphertext will be shared with a 3rd party, to
+        avoid leaking the fact that the scalar added was 0.
+          - However, if performing a sequence of homomorphic operations, it can be more efficient to simply re-blind
+          the final ciphertext result at the end of the sequence, using the `obfuscate()` method, rather than using
+          `add_and_obfuscate(...)` for each scalar addition or homomorphic addition operation (and/or
+          `multiply_and_obfuscate(...)` for each homomorphic scalar multiplication operation).
         """
         if type(other) is int:
             return self._add_scalar(other)
@@ -1013,6 +1023,11 @@ class EncryptedUnsignedInteger:
         """
         if scalar < 0 or scalar >= self.public_key.n:
             raise ValueError("Scalar integer must be a non-negative integer in the range [0, n).")
+
+        # Re-blind the ciphertext if the scalar summand is 0, to avoid leaking the fact that the scalar added was 0
+        # (i.e., retaining indistinguishability of the ciphertext).
+        if scalar == 0:
+            return self.add_and_obfuscate(scalar)
 
         if self.public_key.g == self.public_key.n + 1:
             # Homomorphic addition of scalar without re-blinding: `c2 := Enc(p + s) = Enc(p) * (1 + n*s) mod n^2`,
@@ -1115,6 +1130,28 @@ class EncryptedUnsignedInteger:
         (i.e., `c2 := Enc(p1 * s) = Enc(p1)^s mod n^2`, where `p1` is a plaintext non-negative integer encrypted as this
         ciphertext, `s` is the provided plaintext non-negative integer "scalar" multiplier, and `c2` is the resulting
         homomorphic scalar product, a Paillier ciphertext encrypting the plaintext product: `p1 * s`.)
+
+        - Note: The special case of the zero scalar multiplier is handled separately, as it requires re-blinding of the
+        ciphertext to avoid leaking the encrypted plaintext result (i.e., `Enc(p1 * 0) = Enc(p1)^0 = 1`), due to the
+        unblinded ciphertext value of 1 that is otherwise produced.
+          - The revised operation for s = 0 is: `c2' := Enc'(p1 * 0) = Enc(p1)^0 * r^n mod n^2`, where `r` ∈ [1, n) is a
+          random blinding factor base, and `c2'` is the resulting re-blinded ciphertext.
+
+        - Note: The special case of a multiplier of 1 is a no-op for this method, returning the original ciphertext
+        unchanged. For use in secure multi-party computation (MPC) protocols, it's recommended to use the
+        `multiply_and_obfuscate(...)` method here instead of this `multiply(...)` method, if a scalar multiplier of 1
+        could be provided by the protocol and both the multiplicand and product will be shared with a 3rd party, to
+        avoid leaking the fact that the scalar multiplier was 1.
+          - However, if performing a sequence of homomorphic operations, it can be more efficient to simply re-blind
+          the final ciphertext result at the end of the sequence, using the `obfuscate()` method, rather than using
+          `multiply_and_obfuscate(...)` for each scalar multiplication operation (and/or `add_and_obfuscate(...)` for
+          each homomorphic addition operation).
+
+        :param scalar: The plaintext non-negative integer "scalar" multiplier to multiply the encrypted integer by.
+        :return: The resulting homomorphic scalar product, a Paillier ciphertext encrypting the plaintext product:
+                 `p1 * s`, where `p1` is the original plaintext non-negative integer encrypted as this ciphertext,
+                 and `s` is the provided plaintext non-negative integer "scalar" multiplier.
+        :raises ValueError: If the scalar is a negative integer.
         """
         # Ensure that the scalar is a non-negative integer, as Paillier encryption only natively supports non-negative
         # integer plaintexts.
@@ -1123,11 +1160,20 @@ class EncryptedUnsignedInteger:
                 "The 'scalar' multiplier used in Paillier homomorphic scalar multiplication must be a non-negative"
                 " integer."
             )
-
-        return EncryptedUnsignedInteger(
-            pow(self.encrypted, scalar, self.public_key.n2),
-            self.public_key
-        )
+        elif scalar == 0:
+            # Perform necessary re-blinding of the ciphertext, since naïve homomorphic scalar multiplication by zero
+            # results in an unblinded ciphertext value of 1, which trivially leaks the encrypted plaintext result of 0.
+            return self.multiply_and_obfuscate(scalar)
+        # TODO: Also call `multiply_and_obfuscate(...)` for this scalar == 1 case, to avoid leaking the fact that the
+        #   scalar multiplier was 1.
+        elif scalar == 1:
+            # A scalar multiplier of 1 is a no-op for this method, returning the original ciphertext unchanged.
+            return self
+        else:
+            return EncryptedUnsignedInteger(
+                pow(self.encrypted, scalar, self.public_key.n2),
+                self.public_key
+            )
 
     def multiply_and_obfuscate(self, scalar: int) -> EncryptedUnsignedInteger:
         """
