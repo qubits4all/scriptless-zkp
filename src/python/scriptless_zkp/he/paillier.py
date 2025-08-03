@@ -40,6 +40,8 @@ DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key s
 RSA_OID: str = '1.2.840.113549.1.1.1'  # RSA OID used as a placeholder for Paillier private keys (no specific OID).
 
 
+# TODO: Replace use of Python's built-in `pow` with a constant-time modular exponentiation implementation
+#   (e.g., the gmpy2 library's `gmpy2.powmod_sec(x, y, m)` function), to mitigate the risk of timing attacks.
 @dataclass
 class PaillierPrivateKey:
     p: int   # private prime p
@@ -549,6 +551,8 @@ class PaillierPrivateKey:
         return safe_divide(u - 1, n)
 
 
+# TODO: Replace use of Python's built-in `pow` with a constant-time modular exponentiation implementation
+#   (e.g., the gmpy2 library's `gmpy2.powmod_sec(x, y, m)` function), to mitigate the risk of timing attacks.
 @dataclass
 class PaillierPublicKey:
     n: int   # public modulus: `n = p * q`, for private p, q prime
@@ -661,6 +665,8 @@ class PaillierPublicKey:
 
         return f"{public_modulus_base64}:{public_generator_base64}"
 
+    # TODO: Revise random blinding factor (base) generation to exclude `1` and `n-1` (even thought they're technically
+    #   allowed values per the Paillier '99 paper), which otherwise result in degenerate ciphertexts.
     def encrypt(self, message: int) -> EncryptedUnsignedInteger:
         """
         Encrypts a non-negative integer message using the Paillier public key, using a randomly generated blinding
@@ -680,6 +686,8 @@ class PaillierPublicKey:
 
         return self.encrypt_with_blinding_factor(message, blinding_factor_base)
 
+    # TODO: Disallow the blind factor bases `1` and `n-1` (even thought they're technically allowed values per the
+    #   Paillier '99 paper), which otherwise result in degenerate ciphertexts.
     def encrypt_with_blinding_factor(self, message: int, blinding_factor_base: int) -> EncryptedUnsignedInteger:
         """
         Encrypts a non-negative integer message using the Paillier public key, with a specified random blinding factor
@@ -734,6 +742,8 @@ class PaillierPublicKey:
                 pow(self.g, message, self.n2) * pow(blinding_factor_base, self.n, self.n2)
             ) % self.n2
 
+    # TODO: Revise random blinding factor (base) generation to exclude `1` and `n-1` (even thought they're technically
+    #   allowed values per the Paillier '99 paper), which otherwise result in degenerate ciphertexts.
     def encrypt_and_return_blinding_factor(self, message: int) -> (EncryptedUnsignedInteger, int):
         """
         Encrypts a non-negative integer message using the Paillier public key, returning the encrypted message and the
@@ -865,6 +875,8 @@ class PaillierKeyPair:
         return self.public_key.export_public_key()
 
 
+# TODO: Replace use of Python's built-in `pow` with a constant-time modular exponentiation implementation
+#   (e.g., the gmpy2 library's `gmpy2.powmod_sec(x, y, m)` function), to mitigate the risk of timing attacks.
 @dataclass
 class EncryptedUnsignedInteger:
     """
@@ -1131,22 +1143,18 @@ class EncryptedUnsignedInteger:
         ciphertext, `s` is the provided plaintext non-negative integer "scalar" multiplier, and `c2` is the resulting
         homomorphic scalar product, a Paillier ciphertext encrypting the plaintext product: `p1 * s`.)
 
-        - Note: The special case of the zero scalar multiplier is handled separately, as it requires re-blinding of the
-        ciphertext to avoid leaking the encrypted plaintext result (i.e., `Enc(p1 * 0) = Enc(p1)^0 = 1`), due to the
-        unblinded ciphertext value of 1 that is otherwise produced.
-          - The revised operation for s = 0 is: `c2' := Enc'(p1 * 0) = Enc(p1)^0 * r^n mod n^2`, where `r` ∈ [1, n) is a
-          random blinding factor base, and `c2'` is the resulting re-blinded ciphertext.
+        - Note: The special cases of a scalar multiplier of zero or one are handled separately, as these require
+        re-blinding of the ciphertext to avoid leaking information with the ciphertext that's otherwise produced
+        (i.e., that the encrypted plaintext result is `0` itself, in the case of the zero multiplier:
+            `Enc(p1 * 0) = Enc(p1)^0 = 1`,
+        or breaking indistinguishability and leaking the multiplier (i.e., in the case of a scalar multiplier of `1`:
+            `Enc(p1 * 1) = Enc(p1)^1 = Enc(p1)`
 
-        - Note: The special case of a multiplier of 1 is a no-op for this method, returning the original ciphertext
-        unchanged. For use in secure multi-party computation (MPC) protocols, it's recommended to use the
-        `multiply_and_obfuscate(...)` method here instead of this `multiply(...)` method, if a scalar multiplier of 1
-        could be provided by the protocol and both the multiplicand and product will be shared with a 3rd party, to
-        avoid leaking the fact that the scalar multiplier was 1.
-          - However, if performing a sequence of homomorphic operations, it can be more efficient to simply re-blind
-          the final ciphertext result at the end of the sequence, using the `obfuscate()` method, rather than using
-          `multiply_and_obfuscate(...)` for each scalar multiplication operation (and/or `add_and_obfuscate(...)` for
-          each homomorphic addition operation).
-
+          - The revised re-blinded operation for scalar `s = 0` is:
+              `c2' := Enc'(p1 * 0) = Enc(p1)^0 * r^n mod n^2`,
+          where `r` ∈ [1, n) is a random blinding factor base, and `c2'` is the resulting re-blinded ciphertext.
+          - The revised re-blinded operation for scalar `s = 1` is:
+              `c2' := Enc'(p1 * 1) = Enc(p1)^1 * r^n mod n^2`
         :param scalar: The plaintext non-negative integer "scalar" multiplier to multiply the encrypted integer by.
         :return: The resulting homomorphic scalar product, a Paillier ciphertext encrypting the plaintext product:
                  `p1 * s`, where `p1` is the original plaintext non-negative integer encrypted as this ciphertext,
@@ -1164,11 +1172,11 @@ class EncryptedUnsignedInteger:
             # Perform necessary re-blinding of the ciphertext, since naïve homomorphic scalar multiplication by zero
             # results in an unblinded ciphertext value of 1, which trivially leaks the encrypted plaintext result of 0.
             return self.multiply_and_obfuscate(scalar)
-        # TODO: Also call `multiply_and_obfuscate(...)` for this scalar == 1 case, to avoid leaking the fact that the
-        #   scalar multiplier was 1.
         elif scalar == 1:
-            # A scalar multiplier of 1 is a no-op for this method, returning the original ciphertext unchanged.
-            return self
+            # Perform necessary re-blinding of the ciphertext, since naïve homomorphic scalar multiplication by 1
+            # results in the original ciphertext (i.e., breaking indistinguishability), and leaking the fact that the
+            # scalar multiplier was 1.
+            return self.multiply_and_obfuscate(scalar)
         else:
             return EncryptedUnsignedInteger(
                 pow(self.encrypted, scalar, self.public_key.n2),
