@@ -38,6 +38,8 @@ all liability or warrantability related to its use.
 
 #### Cryptographic Commitments (Elliptic Curve-based) [[scriptless_zkp.ecc.commitments](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc/commitments)]
   - **Pedersen Commitments** (over Elliptic Curves) [`scriptless_zkp.ecc.commitments.pedersen`]
+  - **Vector Pedersen Commitments** (over Elliptic Curves) [`scriptless_zkp.ecc.commitments.vector_pedersen`]
+    - Support for vector commitments, which enable committing to multiple values in a single commitment.
 
 #### Cryptographic Commitments [[scriptless_zkp.commitments](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/commitments)]
   - **HMAC-based & Blake2b-based Keyed-Hash Commitments** [`scriptless_zkp.commitments.hmac_commitments`]
@@ -62,7 +64,10 @@ all liability or warrantability related to its use.
 
 #### Cryptographic Commitments (ECC)
 - ~~Pedersen Commitments (over Elliptic Curves)~~
-- **Vector Pedersen Commitments** (over Elliptic Curves)
+- ~~Vector Pedersen Commitments** (over Elliptic Curves)~~
+- Polynomial Pedersen Commitments (over Elliptic Curves)
+  - Support for committing to an `n`'th-degree polynomial `y(x) = a_n*x^n + a_n-1*x^n-1 + ... + a_1*x + a_0` and
+  proving properties about it in zero-knowledge, such as evaluation at a value: `y(u)`
 
 #### Adaptor Signatures - ECC Schnorr
 - ~~Adaptor Signatures for ECC Schnorr (single-party)~~

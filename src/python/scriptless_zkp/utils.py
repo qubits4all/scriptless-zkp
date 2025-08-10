@@ -60,3 +60,19 @@ def random_positive_integer_of_size(size_in_bits: int) -> int:
     :return: A random positive integer of the specified size in bits.
     """
     return number.getRandomNBitInteger(size_in_bits)
+
+
+def safe_divide(dividend: int, divisor: int) -> int:
+    """
+    Divides the dividend by the divisor only if divisible, returning the result as an integer; otherwise raising an
+    exception.
+    :param dividend: The dividend to be divided, expected to be an integer.
+    :param divisor: The divisor by which to divide the dividend, expected to be a non-zero integer.
+    :return: The result of the division (i.e., the quotient), as an integer.
+    :raises AssertionError: If the divisor is zero or the dividend is not divisible by the divisor.
+    """
+    assert isinstance(dividend, int) and isinstance(divisor, int), "The dividend and divisor must be integers."
+    assert divisor != 0, "Cannot divide by zero."
+    assert dividend % divisor == 0, f"{dividend} is not divisible by {divisor}."
+
+    return dividend // divisor

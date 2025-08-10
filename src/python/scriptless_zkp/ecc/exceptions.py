@@ -32,12 +32,16 @@ class InvalidECCPointException(Exception):
             ecc_curve_name: str,
             point_x: int,
             point_y: int,
-            msg: Optional[str] = None
+            msg: Optional[str] = None,
+            append_default_message: bool = True
     ):
         message: str = "ECC point does not lie on the given elliptic curve"
-        if msg is not None:
+        if msg is not None and append_default_message:
             message = f"{msg} -- {message}"
+        elif msg is not None:
+            message = msg
 
+        # Append ECC point coordinates and curve name metadata to the exception's message.
         message = f"{message} [curve={ecc_curve_name}, point_x={point_x}, point_y={point_y}]"
 
         super().__init__(message)
@@ -49,7 +53,7 @@ class InvalidECCPointException(Exception):
     def __repr__(self) -> str:
         return f"{type(self).__name__}: {self.msg}"
 
-    def invalid_coordinates(self) -> (int, int):
+    def invalid_coordinates(self) -> tuple[int, int]:
         return self.point_x, self.point_y
 
 
@@ -78,3 +82,18 @@ class IncorrectECCSchnorrSignatureCurveException(Exception):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}: {self.msg}"
+
+
+class InvalidECCPedersenCommitmentPointException(Exception):
+    def __init__(self, ecc_curve_name: str, message: Optional[str] = None):
+        msg: str = ("ECC Pedersen Commitment point is the point-at-infinity (identity point) on the configured elliptic"
+                    " curve, which is not a valid commitment")
+
+        if message is not None:
+            msg = message
+
+        msg = f"{msg} [curve='{ecc_curve_name}']"
+
+        super().__init__(msg)
+        self.ecc_curve = ecc_curve_name
+        self.msg = msg
