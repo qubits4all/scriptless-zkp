@@ -1223,7 +1223,7 @@ class EncryptedUnsignedInteger:
 
           - The revised re-blinded operation for scalar `s = 0` is:
               `c2' := Enc'(p1 * 0) = Enc(p1)^0 * r^n mod n^2`,
-          where `r` ∈ [1, n) is a random blinding factor base, and `c2'` is the resulting re-blinded ciphertext.
+          where `r` ∈ [2, n-1) is a random blinding factor base, and `c2'` is the resulting re-blinded ciphertext.
           - The revised re-blinded operation for scalar `s = 1` is:
               `c2' := Enc'(p1 * 1) = Enc(p1)^1 * r^n mod n^2`
         :param scalar: The plaintext non-negative integer "scalar" multiplier to multiply the encrypted integer by.
