@@ -5,7 +5,7 @@ Issues = "https://github.com/qubits4all/scriptless-zkp/issues"
 
 [tool.poetry]
 name = "scriptless_zkp"
-version = "0.5.0-dev"
+version = "0.5.0"
 authors = [ "qubits4all <qubits4all@users.noreply.github.com>" ]
 maintainers = [ "qubits4all <qubits4all@users.noreply.github.com>" ]
 description = 'Scriptless-ZKP - Adaptor & multi-party signatures, zero-knowledge proofs (ZKPs) & "scriptless" scripts'
