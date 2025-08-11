@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "scriptless_zkp"
-version = "0.5.0"
+version = "0.6.0-dev"
 authors = [ "qubits4all <qubits4all@users.noreply.github.com>" ]
 maintainers = [ "qubits4all <qubits4all@users.noreply.github.com>" ]
 description = 'Scriptless-ZKP - Adaptor & multi-party signatures, zero-knowledge proofs (ZKPs) & "scriptless" scripts'
