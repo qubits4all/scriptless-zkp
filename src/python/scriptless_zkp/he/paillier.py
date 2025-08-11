@@ -24,7 +24,7 @@ from Cryptodome.IO import PKCS8
 
 import libnum
 
-from scriptless_zkp import utils
+from scriptless_zkp import utils, number_theory
 from scriptless_zkp.he import (
     DEFAULT_HMAC_HASH_ALGORITHM, DEFAULT_PKCS8_HMAC_SALT_BYTES, DEFAULT_PKCS8_AES_KEY_BYTES,
     MIN_PKCS8_PASSPHRASE_LENGTH, PKCS8_KDF_PBKDF2_SHA224_AES128_CBC, PKCS8_KDF_PBKDF2_SHA256_AES128_CBC,
@@ -40,6 +40,8 @@ DEFAULT_KEY_SIZE: int = 3072  # Default based on NIST recommended min. RSA key s
 RSA_OID: str = '1.2.840.113549.1.1.1'  # RSA OID used as a placeholder for Paillier private keys (no specific OID).
 
 
+# TODO: Replace use of Python's built-in `pow` with a constant-time modular exponentiation implementation
+#   (e.g., the gmpy2 library's `gmpy2.powmod_sec(x, y, m)` function), to mitigate the risk of timing attacks.
 @dataclass
 class PaillierPrivateKey:
     p: int   # private prime p
@@ -552,6 +554,8 @@ class PaillierPrivateKey:
         return safe_divide(u - 1, n)
 
 
+# TODO: Replace use of Python's built-in `pow` with a constant-time modular exponentiation implementation
+#   (e.g., the gmpy2 library's `gmpy2.powmod_sec(x, y, m)` function), to mitigate the risk of timing attacks.
 @dataclass
 class PaillierPublicKey:
     n: int   # public modulus: `n = p * q`, for private p, q prime
@@ -668,18 +672,27 @@ class PaillierPublicKey:
         """
         Encrypts a non-negative integer message using the Paillier public key, using a randomly generated blinding
         factor. Encryption of message `m` is performed as:
-            Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the base `r`, of the blinding factor `r^n`, is a random prime
-        in `Z_{n}^*` (i.e., r ∈ [1, n) excl. {p, q}, where n := p*q ).
+            `Enc(pk=n, m): c = g^m * r^n mod n^2`,
+        where the base `r`, of blinding factor `r^n`, is a random integer in `Z_{n}^* \ {1, n-1}`, the multiplicative
+        group of integers modulo `n` (so `r` must be co-prime with `n`, or equivalently `gcd(r, n) == 1`), but excluding
+        `1` and `n-1` (i.e., to avoid degenerate ciphertexts otherwise produced by these values of `r`).
+
+        - Note: If the blinding factor 1 were permitted, this results in a degenerate ciphertext:
+            `c = g^m * 1^n mod n^2` == `g^m mod n^2`,
+          which features no randomization at all, and would immediately leak the plaintext message `m == 0` as `c == 1`.
+        - Note: If the blinding factor `n-1` were permitted, this also results in a degenerate ciphertext:
+            `c = g^m * (n-1)^n mod n^2` == `g^m * (-1)^n mod n^2` == `g^m mod n^2` (i.e., since `n` is even),
+          which causes ciphertexts to occupy a distinguishable, tiny interval; leak one extra bit about `r`, and enable
+          easy testing for `m == 0`.
         :param message: The non-negative integer message to be encrypted, which must lie in the range `[0, n)` to be a
                valid Paillier message.
-        :return: The encrypted non-negative integer message, as a Paillier ciphertext, an integer `c` ∈ [1, n^2).
+        :return: The encrypted non-negative integer message, as a Paillier ciphertext, an integer `c` ∈ [2, n^2).
         :raises ValueError: If the message is out of range for encryption (i.e., if it lies outside of: `[0, n)` ).
         """
-        # Generate a random blinding factor (base) `r` in the range [1, n) (i.e., r ∈ `Z_{n}^*`, the multiplicative
-        # group of integers modulo `n`).
-        # Note: gcd(r, n) = 1 is required, however a random r ∈ `Z_{n}^*` meets this requirement unless r == p or
-        #   r == q, where n := p*q (which is highly unlikely to occur).
-        blinding_factor_base: int = utils.random_positive_integer(self.n)
+        # Generate a random blinding factor (base) `r` in the range [2, n-1), which is also co-prime with `n`
+        # (i.e., `gcd(r, n) == 1`), so that `r` is in the multiplicative group of integers modulo `n`
+        # (i.e., r ∈ `Z_{n}^*`).
+        blinding_factor_base: int = self.generate_random_blinding_factor_base()
 
         return self.encrypt_with_blinding_factor(message, blinding_factor_base)
 
@@ -687,22 +700,35 @@ class PaillierPublicKey:
         """
         Encrypts a non-negative integer message using the Paillier public key, with a specified random blinding factor
         base `r` used in the encryption. Encryption of message `m` is performed as:
-            Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the base `r`, of the blinding factor `r^n`, is a random prime
-        in `Z_{n}^*` (i.e., r ∈ [1, n) ).
+            Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the base `r`, of the blinding factor `r^n`, is a random integer
+        in `Z_{n}^* \ {1, n-1}`, the multiplicative group of integers modulo `n` (so `r` must be co-prime with `n`, or
+        equivalently `gcd(r, n) == 1`), but excluding `1` and `n-1` (i.e., to avoid degenerate ciphertexts otherwise
+        produced by these values of `r`).
+
+        - Note: If the blinding factor 1 were permitted, this results in a degenerate ciphertext:
+            `c = g^m * 1^n mod n^2` == `g^m mod n^2`,
+          which features no randomization at all, and would immediately leak the plaintext message `m == 0` as `c == 1`.
+        - Note: If the blinding factor `n-1` were permitted, this also results in a degenerate ciphertext:
+            `c = g^m * (n-1)^n mod n^2` == `g^m * (-1)^n mod n^2` == `g^m mod n^2` (i.e., since `n` is even),
+          which causes ciphertexts to occupy a distinguishable, tiny interval; leak one extra bit about `r`, and enable
+          easy testing for `m == 0`.
         :param message: The non-negative integer message to be encrypted, which must lie in the range `[0, n)` to be a
                valid Paillier message.
         :param blinding_factor_base: The random base `r` of the blinding factor `r^n`, used in the encryption.
-        :return: The encrypted non-negative integer message, as a Paillier ciphertext, an integer `c` ∈ [1, n^2).
+        :return: The encrypted non-negative integer message, as a Paillier ciphertext, an integer `c` ∈ [2, n^2).
         :raises ValueError: If the message is out of range for encryption (i.e., if it lies outside of: `[0, n)` ), or
-                if the blinding factor base `r` is out of range (i.e., if it lies outside of: `[1, n)` ).
+                if the blinding factor base `r` is out of range (i.e., if it lies outside of: `[2, n-1)` ) or is not
+                co-prime with the public modulus `n`.
         """
         # Ensure the message `m` is a non-negative integer in the range [0, n) (i.e., `m` ∈ `Z_{n}`, the (additive)
         # group of integers modulo `n`).
         if message < 0 or message >= self.n:
-            raise ValueError("Message is out of range for encryption.")
-        # Ensure the blinding factor base `r` is a random integer in the range [1, n) (i.e., r ∈ `Z_{n}^*`).
-        elif blinding_factor_base < 1 or blinding_factor_base >= self.n:
-            raise ValueError("Blinding factor base 'r' must be in the range [1, n).")
+            raise ValueError("Message is out of range for encryption -- must be an integer in the range: [0, n - 1].")
+
+        # Ensure the blinding factor base `r` is a (random) integer in the range `[2, n-1)`, which is also co-prime
+        # with `n` (i.e., `gcd(r, n) == 1`), so that `r` is in the multiplicative group of integers modulo `n`
+        # (i.e., r ∈ `Z_{n}^*`).
+        self._validate_blinding_factor_base(blinding_factor_base)
 
         return EncryptedUnsignedInteger(
             self._encrypt_nonnegative_int(message, blinding_factor_base),
@@ -713,19 +739,21 @@ class PaillierPublicKey:
         """
         Encrypts a non-negative integer message using the Paillier public key, with a specified random blinding factor
         base `r` used in the encryption. Encryption of message `m` is performed as:
-            Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the base `r`, of the blinding factor `r^n`, is a random prime
-        in `Z_{n}^*` (i.e., r ∈ [1, n) ).
+            Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the base `r`, of the blinding factor `r^n`, is a random integer
+        in `Z_{n}^* \ {1, n-1}` (i.e., r ∈ [2, n-1) ) and is co-prime with `n` (i.e., `gcd(r, n) == 1`).
         :param message: The non-negative integer message to be encrypted, which must lie in the range `[0, n)` to be a
                valid Paillier message.
         :param blinding_factor_base: The random base `r` of the blinding factor `r^n`, used in the encryption.
-        :return: The encrypted non-negative integer message, as a Paillier ciphertext, an integer `c` ∈ [1, n^2).
-        :raises ValueError: If the message is out of range for encryption (i.e., if it lies outside of: `[0, n)` ).
+        :return: The encrypted non-negative integer message, as a Paillier ciphertext, an integer `c` ∈ [2, n^2).
+        :raises AssertionError: If the message is out of range for encryption (i.e., if it lies outside of: `[0, n)` ).
+        :raises AssertionError: If the blinding factor base `r` is out of range (i.e., if it lies outside of:
+                `[2, n-1)` ).
         """
         # Ensure the message `m` is a non-negative integer in the range [0, n) (i.e., `m` ∈ `Z_{n}`, the (additive)
         # group of integers modulo `n`).
         assert 0 <= message < self.n, "Message must be a non-negative integer in the range [0, n)."
-        # Ensure the blinding factor base `r` is a random integer in the range [1, n) (i.e., r ∈ `Z_{n}^*`).
-        assert 0 < blinding_factor_base < self.n, "Blinding factor base 'r' must be in the range [1, n)."
+        # Ensure the blinding factor base `r` is a (random) integer in the range [2, n-1) (i.e., r ∈ `Z_{n}^*`).
+        assert 1 < blinding_factor_base < self.n - 1, "Blinding factor base 'r' must be in the range [2, n-1)."
 
         if self.g == self.n + 1:
             # Use optimization: `g^m ≡ (1 + n*m) mod n^2`, when `g == n + 1`.
@@ -741,21 +769,72 @@ class PaillierPublicKey:
         """
         Encrypts a non-negative integer message using the Paillier public key, returning the encrypted message and the
         random blinding factor used in the encryption. Encryption of message `m` is performed as:
-            Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the base `r`, of the blinding factor `r^n`, is a random prime
-        in `Z_{n}^*` (i.e., r ∈ [1, n) ).
+            Enc(pk=n, m): `c = g^m * r^n mod n^2`, where the base `r`, of the blinding factor `r^n`, is a random integer
+        in `Z_{n}^* \ {1, n-1}` (i.e., r ∈ [2, n-1) ) and is co-prime with `n` (i.e., `gcd(r, n) == 1`).
+
+        The values `1` and `n-1` are excluded here when choosing the blinding factor base `r` (i.e., to avoid degenerate
+        ciphertexts otherwise produced by these values of `r`).
+
+        - Note: If the blinding factor 1 were permitted, this results in a degenerate ciphertext:
+            `c = g^m * 1^n mod n^2` == `g^m mod n^2`,
+          which features no randomization at all, and would immediately leak the plaintext message `m == 0` as `c == 1`.
+        - Note: If the blinding factor `n-1` were permitted, this also results in a degenerate ciphertext:
+            `c = g^m * (n-1)^n mod n^2` == `g^m * (-1)^n mod n^2` == `g^m mod n^2` (i.e., since `n` is even),
+          which causes ciphertexts to occupy a distinguishable, tiny interval; leak one extra bit about `r`, and enable
+          easy testing for `m == 0`.
         :param message: The non-negative integer message to be encrypted, which must lie in the range `[0, n)` to be a
                valid Paillier message.
         :return: A tuple containing the encrypted non-negative integer message, as a Paillier ciphertext, an integer
-                 `c` ∈ [1, n^2), and the random blinding factor `r` used in the encryption.
+                 `c` ∈ [2, n^2), and the random blinding factor `r` used in the encryption.
         :raises ValueError: If the message is out of range for encryption (i.e., if it lies outside of: `[0, n)` ).
+        :raises AssertionError: If the generated random blinding factor base `r` is out of range (i.e., if it lies
+                outside of: `[2, n-1)` ).
         """
-        # Generate a random blinding factor (base) `r` in the range [1, n) (i.e., r ∈ `Z_{n}^*`, the multiplicative
-        # group of integers modulo `n`).
-        # Note: gcd(r, n) = 1 is required, however a random r ∈ `Z_{n}^*` meets this requirement unless r == p or
-        #   r == q, where n := p*q (which is highly unlikely to occur).
-        blinding_factor_base: int = utils.random_positive_integer(self.n)
+        # Generate a random blinding factor (base) `r` in the range [2, n-1), which is also co-prime with `n`
+        # (i.e., `gcd(r, n) == 1`), so that `r` is in the multiplicative group of integers modulo `n`
+        # (i.e., r ∈ `Z_{n}^*`).
+        blinding_factor_base: int = self.generate_random_blinding_factor_base()
 
         return self.encrypt_with_blinding_factor(message, blinding_factor_base), blinding_factor_base
+
+    def generate_random_blinding_factor_base(self) -> int:
+        """
+        Generates a random blinding factor (base) `r ∈ Z_{n}^* \ {1, n-1}`, the multiplicative group of integers modulo
+        `n`, but excluding `1` and `n-1` (i.e., to avoid degenerate ciphertexts otherwise produced by these values).
+        - Note: This function randomly selects `r ∈ [2, n-1)`, followed by a check to ensure `r` & `n` are co-prime
+        (i.e., `gcd(r, n) = 1`), as required for Paillier decryption to actually return a valid plaintext.
+
+        :return: A random blinding factor base `r` in the range `[2, n-1)` with `gcd(r, n) = 1` (i.e., such that `r` is
+                 co-prime with `n`).
+        """
+        # Select a random blinding factor base until a valid one is found (i.e., one that is co-prime with `n`).
+        while True:
+            # Generate a random blinding factor (base) `r` in the range [2, n-1).
+            blinding_factor_base: int = utils.random_integer_in_range(2, self.n - 1)
+            # Ensure `gcd(r, n) = 1` (i.e., `r` is co-prime with `n`), as required for Paillier decryption to work.
+            if number_theory.is_coprime(blinding_factor_base, self.n):
+                return blinding_factor_base
+
+    def _validate_blinding_factor_base(self, blinding_factor_base: int) -> None:
+        """
+        Validates the provided blinding factor base `r`, ensuring it is in the range `[2, n-1)` and is co-prime with
+        the public modulus `n` (i.e., `gcd(r, n) = 1`), as required for Paillier decryption to work.
+
+        :param blinding_factor_base: The blinding factor base `r` to validate.
+        :raises ValueError: If the blinding factor base is out of range (i.e., does not lie in: `[2, n-1)` ), or is not
+                co-prime with the public modulus `n` (i.e., `gcd(r, n) ≠ 1`).
+        """
+        if blinding_factor_base < 2 or blinding_factor_base >= self.n - 1:
+            raise ValueError(
+                f"Paillier blinding factor (base) 'r' must be in the range: [2, n - 2]."
+                f" [blinding_factor_base={blinding_factor_base}, public_modulus_n={self.n}]"
+            )
+
+        if not number_theory.is_coprime(blinding_factor_base, self.n):
+            raise ValueError(
+                f"Paillier blinding factor (base) 'r' must be co-prime with the public modulus 'n'"
+                f" [blinding_factor_base={blinding_factor_base}, public_modulus_n={self.n}]"
+            )
 
 
 @dataclass
@@ -868,6 +947,8 @@ class PaillierKeyPair:
         return self.public_key.export_public_key()
 
 
+# TODO: Replace use of Python's built-in `pow` with a constant-time modular exponentiation implementation
+#   (e.g., the gmpy2 library's `gmpy2.powmod_sec(x, y, m)` function), to mitigate the risk of timing attacks.
 @dataclass
 class EncryptedUnsignedInteger:
     """
@@ -985,6 +1066,16 @@ class EncryptedUnsignedInteger:
         original plaintext non-negative integer encrypted as this ciphertext, `s` is the provided plaintext non-negative
         integer scalar, and `c2'` is the resulting homomorphic sum, a Paillier ciphertext encrypting the plaintext sum:
         `p1 + s`).
+
+        - Note: The special case of a scalar summand of 0 is a no-op for this method, returning the original ciphertext
+        unchanged. For use in secure multi-party computation (MPC) protocols, it's recommended to use the
+        `add_and_obfuscate(...)` method here instead of this `add(...)` method, if a scalar summand of 0 could be
+        provided by the protocol and both the original ciphertext & sum ciphertext will be shared with a 3rd party, to
+        avoid leaking the fact that the scalar added was 0.
+          - However, if performing a sequence of homomorphic operations, it can be more efficient to simply re-blind
+          the final ciphertext result at the end of the sequence, using the `obfuscate()` method, rather than using
+          `add_and_obfuscate(...)` for each scalar addition or homomorphic addition operation (and/or
+          `multiply_and_obfuscate(...)` for each homomorphic scalar multiplication operation).
         """
         if type(other) is int:
             return self._add_scalar(other)
@@ -1016,6 +1107,11 @@ class EncryptedUnsignedInteger:
         """
         if scalar < 0 or scalar >= self.public_key.n:
             raise ValueError("Scalar integer must be a non-negative integer in the range [0, n).")
+
+        # Re-blind the ciphertext if the scalar summand is 0, to avoid leaking the fact that the scalar added was 0
+        # (i.e., retaining indistinguishability of the ciphertext).
+        if scalar == 0:
+            return self.add_and_obfuscate(scalar)
 
         if self.public_key.g == self.public_key.n + 1:
             # Homomorphic addition of scalar without re-blinding: `c2 := Enc(p + s) = Enc(p) * (1 + n*s) mod n^2`,
@@ -1067,8 +1163,9 @@ class EncryptedUnsignedInteger:
         if self.public_key != other.public_key:
             raise ValueError("Homomorphic addition operands must have the same Paillier public key.")
 
-        # Generate a random re-blinding factor base `r` in `Z_{n}^*` (i.e., approx. r ∈ [1, n) ).
-        blinding_factor_base: int = utils.random_positive_integer(self.public_key.n)
+        # Generate a random blinding factor (base) `r` in the range [2, n-1), which is also co-prime with `n`
+        # (i.e., `gcd(r, n) == 1`).
+        blinding_factor_base: int = self.public_key.generate_random_blinding_factor_base()
 
         # Calculate the re-blinding factor `r^n` (i.e., `r^n mod n^2`).
         blinding_factor: int = pow(blinding_factor_base, self.public_key.n, self.public_key.n2)
@@ -1089,8 +1186,9 @@ class EncryptedUnsignedInteger:
         if scalar < 0 or scalar >= self.public_key.n:
             raise ValueError("Scalar integer must be a non-negative integer in the range [0, n).")
 
-        # Generate a random re-blinding factor base `r` in `Z_{n}^*` (i.e., approx. r ∈ [1, n) ).
-        blinding_factor_base: int = utils.random_positive_integer(self.public_key.n)
+        # Generate a random blinding factor (base) `r` in the range [2, n-1), which is also co-prime with `n`
+        # (i.e., `gcd(r, n) == 1`).
+        blinding_factor_base: int = self.public_key.generate_random_blinding_factor_base()
 
         # Calculate the re-blinding factor `r^n` (i.e., `r^n mod n^2`).
         blinding_factor: int = pow(blinding_factor_base, self.public_key.n, self.public_key.n2)
@@ -1118,6 +1216,24 @@ class EncryptedUnsignedInteger:
         (i.e., `c2 := Enc(p1 * s) = Enc(p1)^s mod n^2`, where `p1` is a plaintext non-negative integer encrypted as this
         ciphertext, `s` is the provided plaintext non-negative integer "scalar" multiplier, and `c2` is the resulting
         homomorphic scalar product, a Paillier ciphertext encrypting the plaintext product: `p1 * s`.)
+
+        - Note: The special cases of a scalar multiplier of zero or one are handled separately, as these require
+        re-blinding of the ciphertext to avoid leaking information with the ciphertext that's otherwise produced
+        (i.e., that the encrypted plaintext result is `0` itself, in the case of the zero multiplier:
+            `Enc(p1 * 0) = Enc(p1)^0 = 1`,
+        or breaking indistinguishability and leaking the multiplier (i.e., in the case of a scalar multiplier of `1`:
+            `Enc(p1 * 1) = Enc(p1)^1 = Enc(p1)`
+
+          - The revised re-blinded operation for scalar `s = 0` is:
+              `c2' := Enc'(p1 * 0) = Enc(p1)^0 * r^n mod n^2`,
+          where `r` ∈ [2, n-1) is a random blinding factor base, and `c2'` is the resulting re-blinded ciphertext.
+          - The revised re-blinded operation for scalar `s = 1` is:
+              `c2' := Enc'(p1 * 1) = Enc(p1)^1 * r^n mod n^2`
+        :param scalar: The plaintext non-negative integer "scalar" multiplier to multiply the encrypted integer by.
+        :return: The resulting homomorphic scalar product, a Paillier ciphertext encrypting the plaintext product:
+                 `p1 * s`, where `p1` is the original plaintext non-negative integer encrypted as this ciphertext,
+                 and `s` is the provided plaintext non-negative integer "scalar" multiplier.
+        :raises ValueError: If the scalar is a negative integer.
         """
         # Ensure that the scalar is a non-negative integer, as Paillier encryption only natively supports non-negative
         # integer plaintexts.
@@ -1126,11 +1242,20 @@ class EncryptedUnsignedInteger:
                 "The 'scalar' multiplier used in Paillier homomorphic scalar multiplication must be a non-negative"
                 " integer."
             )
-
-        return EncryptedUnsignedInteger(
-            pow(self.encrypted, scalar, self.public_key.n2),
-            self.public_key
-        )
+        elif scalar == 0:
+            # Perform necessary re-blinding of the ciphertext, since naïve homomorphic scalar multiplication by zero
+            # results in an unblinded ciphertext value of 1, which trivially leaks the encrypted plaintext result of 0.
+            return self.multiply_and_obfuscate(scalar)
+        elif scalar == 1:
+            # Perform necessary re-blinding of the ciphertext, since naïve homomorphic scalar multiplication by 1
+            # results in the original ciphertext (i.e., breaking indistinguishability), and leaking the fact that the
+            # scalar multiplier was 1.
+            return self.multiply_and_obfuscate(scalar)
+        else:
+            return EncryptedUnsignedInteger(
+                pow(self.encrypted, scalar, self.public_key.n2),
+                self.public_key
+            )
 
     def multiply_and_obfuscate(self, scalar: int) -> EncryptedUnsignedInteger:
         """
@@ -1153,8 +1278,9 @@ class EncryptedUnsignedInteger:
                 " integer."
             )
 
-        # Generate a random blinding factor base `r` in `Z_{n}^*` (i.e., approx. r ∈ [1, n) ).
-        blinding_factor_base: int = utils.random_positive_integer(self.public_key.n)
+        # Generate a random blinding factor (base) `r` in the range [2, n-1), which is also co-prime with `n`
+        # (i.e., `gcd(r, n) == 1`).
+        blinding_factor_base: int = self.public_key.generate_random_blinding_factor_base()
 
         return EncryptedUnsignedInteger(
             (
@@ -1170,7 +1296,7 @@ class EncryptedUnsignedInteger:
     def obfuscate(self) -> EncryptedUnsignedInteger:
         """
         Obfuscates (re-blinds) this Paillier ciphertext's encrypted non-negative integer, by multiplying it by a new
-        random blinding factor (`r^n`, where `r` ∈ [1, n) ), which doesn't affect the encrypted plaintext due to its
+        random blinding factor (`r^n`, where `r` ∈ [2, n-1) ), which doesn't affect the encrypted plaintext due to its
         cancellation during decryption, but makes the resulting ciphertext indistinguishable from other ciphertexts
         (i.e., `c' = c * r^n mod n^2`).
 
@@ -1186,8 +1312,9 @@ class EncryptedUnsignedInteger:
         scalar product that was shared, to determine the scalar multiplier that was used in the original homomorphic
         "scalar" multiplication.)
         """
-        # Generate a random blinding factor base `r` in `Z_{n}^*` (i.e., approx. r ∈ [1, n) ).
-        blinding_factor_base: int = utils.random_positive_integer(self.public_key.n)
+        # Generate a random blinding factor (base) `r` in the range [2, n-1), which is also co-prime with `n`
+        # (i.e., `gcd(r, n) == 1`).
+        blinding_factor_base: int = self.public_key.generate_random_blinding_factor_base()
 
         # Obfuscate the ciphertext by multiplying it by a blinding factor `r^n` (i.e., `c' = c * r^n mod n^2`).
         return EncryptedUnsignedInteger(
