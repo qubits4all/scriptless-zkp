@@ -648,7 +648,7 @@ class RevealedPedersenCommitment:
             raise ValueError(f"The multiplier must be in the range [0, {self.curve_config.order - 1}].")
         elif multiplier == 0:
             # If the multiplier is zero, use a new random blinding factor.
-            blinding_factor = ecc_utils.generate_random_nonce(self.curve_config, exclude_one=True)
+            blinding_factor: int = ecc_utils.generate_random_nonce(self.curve_config, exclude_one=True)
             # If the multiplier is zero, calculate `C(0, r1)` using this new random blinding factor, which is unlikely
             # to result in a commitment point that is the point-at-infinity.
             commitment_product_point: ECC.EccPoint = self.nums_generator * blinding_factor
@@ -679,7 +679,6 @@ class RevealedPedersenCommitment:
 
         # If the multiplier is zero, we use a new random blinding factor.
         if multiplier == 0:
-            # blinding_factor: int = ecc_utils.generate_random_nonce(self.curve_config, exclude_one=True)
             return RevealedPedersenCommitment(
                 self.curve_config,
                 self.nums_generator,
@@ -687,15 +686,15 @@ class RevealedPedersenCommitment:
                 0,               # Committed scalar product is zero.
                 blinding_factor  # new random blinding factor
             )
-
-        # Return a new revealed Pedersen commitment with the product commitment point.
-        return RevealedPedersenCommitment(
-            self.curve_config,
-            self.nums_generator,
-            commitment_product_point,
-            (self.committed * multiplier) % self.curve_config.order,
-            (self.blinding_factor * multiplier) % self.curve_config.order
-        )
+        else:
+            # Return a new revealed Pedersen commitment with the product commitment point.
+            return RevealedPedersenCommitment(
+                self.curve_config,
+                self.nums_generator,
+                commitment_product_point,
+                (self.committed * multiplier) % self.curve_config.order,
+                (self.blinding_factor * multiplier) % self.curve_config.order
+            )
 
     def verify(self) -> bool:
         # Check for invalid blinding factor (must be in the range: [1, curve_order - 1] ).
