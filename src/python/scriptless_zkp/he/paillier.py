@@ -1243,7 +1243,7 @@ class EncryptedUnsignedInteger:
         Homomorphic subtraction of an encrypted non-negative integer from a plaintext non-negative integer scalar
         (i.e., `c2 := Enc(s - p1) = Enc(s) * Enc(p1)^-1 mod n^2`, where `p1` is the original plaintext non-negative
         integer encrypted as this ciphertext, `s` is the provided plaintext non-negative integer scalar, and `c2` is
-        the resulting Paillier ciphertext encrypting the plaintext difference: `s - p`).
+        the resulting Paillier ciphertext encrypting the plaintext difference: `s - p1`).
         """
         if scalar < 0 or scalar >= self.public_key.n:
             raise ValueError("Scalar integer must be a non-negative integer in the range [0, n).")
