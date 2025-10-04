@@ -49,7 +49,7 @@ class KeyedHashCommitmentUtils:
     def commit(
             self,
             secret_message: Union[bytes, bytearray]
-    ) -> (KeyedHashCommitment, RevealedKeyedHashCommitment):
+    ) -> tuple[KeyedHashCommitment, RevealedKeyedHashCommitment]:
         """
         Produces a keyed hash-based commitment for the given secret message, using a random ephemeral key.
         :param secret_message: secret message to which to commit.
@@ -100,7 +100,7 @@ class KeyedHashCommitmentUtils:
 
         return hmac.compare_digest(commitment, expected_commitment)
 
-    def _generate_keyed_hash(self, secret_message: Union[bytes, bytearray]) -> (BinaryCommitment, bytearray):
+    def _generate_keyed_hash(self, secret_message: Union[bytes, bytearray]) -> tuple[BinaryCommitment, bytearray]:
         """
         <p>
         Generates a random ephemeral key equal to the configured hash algorithm's digest size, and produces a

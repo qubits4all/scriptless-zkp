@@ -57,7 +57,7 @@ class SealedDiscreteLogProofCommitment:
             party_id: PartyId,
             dlog_proof: NIZKDiscreteLogProof,
             hash_algorithm: str = KeyedHashCommitmentUtils.DEFAULT_HASH_ALGORITHM
-    ) -> (SealedDiscreteLogProofCommitment, bytearray):
+    ) -> tuple[SealedDiscreteLogProofCommitment, bytearray]:
         """
         Constructs a sealed commitment to the provided discrete logarithm proof and associated discrete log parameters,
         including the discrete log reference point, discrete log base, proof signature & proof verification key.
@@ -160,7 +160,7 @@ class SealedDiscreteLogProofCommitment:
 
 class RevealedDiscreteLogProofCommitment:
     session_id: uuid.UUID    # globally-unique ID for a protocol session
-    party_id: Literal[1, 2]  # prover/committer party's ID (i.e., either #1: initiator or #2: responder)
+    party_id: PartyId        # prover/committer party's ID (i.e., either #1: initiator or #2: responder)
     committed_dlog_proof: NIZKDiscreteLogProof
     commitment_verification_key: bytearray
     hash_algo: str
@@ -173,7 +173,7 @@ class RevealedDiscreteLogProofCommitment:
             commitment_verification_key: bytearray,
             commitment_hash_algorithm: str
     ):
-        self.party_id = type(self)._validate_party_id(party_id)
+        self.party_id: PartyId = self._validate_party_id(party_id)
         self.session_id = session_id
         self.committed_dlog_proof = discrete_log_proof
         self.commitment_verification_key = commitment_verification_key
@@ -306,7 +306,7 @@ class DiscreteLogProofCommitmentUtils:
             party_id: Literal[1, 2],
             dlog_parameters: NIZKDiscreteLogParameters,
             discrete_log: int
-    ) -> (SealedDiscreteLogProofCommitment, NIZKDiscreteLogProof, bytearray):
+    ) -> tuple[SealedDiscreteLogProofCommitment, NIZKDiscreteLogProof, bytearray]:
         dlog_proof: NIZKDiscreteLogProof = self.dlog_prover.calc_proof(
             discrete_log=discrete_log,
             dlog_reference_point=dlog_parameters.dlog_ref_point,

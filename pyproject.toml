@@ -24,7 +24,7 @@ Repository = "https://github.com/qubits4all/scriptless-zkp.git"
 Issues = "https://github.com/qubits4all/scriptless-zkp/issues"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.12"
 attrs = "~23.2.0"
 pycryptodomex = "~3.20.0"
 libnum = "~1.7.1"
