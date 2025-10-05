@@ -113,7 +113,7 @@ class PaillierPrivateKey:
     def __str__(self) -> str:
         """
         Returns a base64-based encoding of this Paillier private key, which uses the following format:
-            `{private_lambda_base64}:{public_modulus_base64}`
+            `{private_prime_p_base64}:{private_prime_q_base64}`
         """
         return self._encode_to_base64()
 
