@@ -16,6 +16,8 @@
 
 import secrets
 
+from Cryptodome.Util import number
+
 
 def random_integer_in_range(lower_inclusive: int, upper_exclusive: int) -> int:
     """
@@ -48,6 +50,16 @@ def random_nonnegative_integer(upper_limit_exclusive: int) -> int:
     :return: A random non-negative integer in the range: [0, upper_limit_exclusive)
     """
     return secrets.randbelow(upper_limit_exclusive)
+
+
+def random_positive_integer_of_size(size_in_bits: int) -> int:
+    """
+    Generates a random positive integer of the specified size in bits, using PyCryptodome's `number` module.
+    The produced random integer will lie in the range: [2^(size_in_bits-1), 2^size_in_bits)
+    :param size_in_bits: The size of the random positive integer to generate, in bits.
+    :return: A random positive integer of the specified size in bits.
+    """
+    return number.getRandomNBitInteger(size_in_bits)
 
 
 def safe_divide(dividend: int, divisor: int) -> int:
