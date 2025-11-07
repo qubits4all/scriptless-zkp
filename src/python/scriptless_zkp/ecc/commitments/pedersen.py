@@ -55,6 +55,7 @@ class PedersenCommitmentContext:
                  generator point.
         :raises ValueError: if a NUMS generator point cannot be derived for the provided (or default) nonce, using the
                 default maximum number of tweaks (``ECCGeneratorDerivationContext.DEFAULT_CANDIDATE_MAX_TWEAKS``).
+                (Note: This is a rare occurrence, and the nonce can be changed to try again.)
         :see: ``ECCGeneratorDerivationContext.derive_generator_for_nonce(nonce)``
         """
         generator_context: ECCGeneratorDerivationContext = ECCGeneratorDerivationContext(

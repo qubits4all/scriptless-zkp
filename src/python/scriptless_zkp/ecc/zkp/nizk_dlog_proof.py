@@ -297,7 +297,7 @@ class NIZKDiscreteLogProof:
         """
         Binary encodes & concatenates this NIZK proof of knowledge of discrete logarithm, along with its associated
         discrete log parameters, and proof verification key, as follows:
-            `<dlog_ref_point><dlog_base><proof_signature><proof_verification_key>`
+            `<dlog_ref_point><dlog_base><proof_verification_key><proof_signature>`
         Elliptic curve points are 'SEC1'-encoded.
         :return: this NIZK proof of knowledge of discrete logarithm, along with its associated discrete log parameters,
                  and proof verification key, binary encoded & concatenated, where 'SEC1' encoding is used for elliptic
