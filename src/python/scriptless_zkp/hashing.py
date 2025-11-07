@@ -53,10 +53,12 @@ class ReducedRangeHasher(ABC):
     def digest(self) -> bytes:
         pass
 
+    # noinspection SpellCheckingInspection
     @abstractmethod
     def intdigest(self) -> int:
         pass
 
+    # noinspection SpellCheckingInspection
     @abstractmethod
     def hexdigest(self) -> str:
         pass
@@ -190,7 +192,7 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
         field_order_bit_length: int = target_field_order.bit_length()
 
         if larger_prime_p is not None:
-            if larger_prime_p.bit_length() < math.ceil(target_field_order * 1.5):
+            if larger_prime_p.bit_length() < math.ceil(field_order_bit_length * 1.5):
                 raise ValueError(
                     f"Provided prime `p` must be at least 1.5 times the bit-length of the target field order: "
                     f"{field_order_bit_length} bits."
