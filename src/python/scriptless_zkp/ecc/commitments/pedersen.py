@@ -53,9 +53,10 @@ class PedersenCommitmentContext:
         :param nonce: a nonce to use when deriving the NUMS generator.
         :return: a new Pedersen commitment context for the provided elliptic curve configuration, using a derived NUMS
                  generator point.
-        :raises ValueError: a NUMS point could not be derived for the provided nonce, given the NUMS point generator's
-                            default max. tweak count. (Note: This is a rare occurrence, and the nonce can be changed to
-                            try again.)
+        :raises ValueError: if a NUMS generator point cannot be derived for the provided (or default) nonce, using the
+                default maximum number of tweaks (``ECCGeneratorDerivationContext.DEFAULT_CANDIDATE_MAX_TWEAKS``).
+                (Note: This is a rare occurrence, and the nonce can be changed to try again.)
+        :see: ``ECCGeneratorDerivationContext.derive_generator_for_nonce(nonce)``
         """
         generator_context: ECCGeneratorDerivationContext = ECCGeneratorDerivationContext(
             curve_config,
