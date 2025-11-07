@@ -261,6 +261,26 @@ class SECP256K1Point2D(ECCPoint2D):
     """
     PlainPoint2D = tuple[int, int]
 
+    """
+    Special (marker) `PlainPoint2D` point, in Cartesian coordinates, for representing the elliptic curve's identity
+    point `O` (a.k.a., the point-at-infinity).
+    """
+    _IDENTITY_POINT2D: PlainPoint2D = (0, 0)
+
+    """
+    Pre-instantiated identity point `O` for the secp256k1 elliptic curve (a.k.a., the point-at-infinity).
+    """
+    _identity_pt: SECP256K1Point2D = SECP256K1Point2D(*_IDENTITY_POINT2D)
+
+    """
+    Pre-instantiated base (generator) point `G` for the secp256k1 elliptic curve, which generates the curve's cyclic
+    subgroup `<G>` used in cryptographic applications.
+    
+    Note: This is not the only generator point for this curve, but is in fact only one of `q - 2` possible generator
+    points, where `q` is the order of the curve's (cyclic) sub-group `<G>` (i.e., `o(<G>)`), also equal to `o(G)`.
+    """
+    _base_pt: SECP256K1Point2D = SECP256K1Point2D(secp256k1.G[0], secp256k1.G[1])
+
     @override
     def __init__(self, x: int, y: int):
         super().__init__(SECP256K1Point2D._curve_names()[0], x, y)
@@ -309,17 +329,20 @@ class SECP256K1Point2D(ECCPoint2D):
     @classmethod
     @override
     def base_point(cls, curve_name: str) -> SECP256K1Point2D:
-        return SECP256K1Point2D(secp256k1.G[0], secp256k1.G[1])
+        if curve_name not in SECP256K1Point2D._curve_names():
+            raise ValueError(f"Unsupported curve name: {curve_name}")
+
+        return SECP256K1Point2D._base_pt
 
     @classmethod
     @override
     def identity(cls, curve_name: str) -> SECP256K1Point2D:
-        if curve_name in SECP256K1Point2D._curve_names():
-            # Using a special (marker) point in Cartesian coordinates (not otherwise on the curve) to encode the
-            # "point-at-infinity" (identity) element for the secp256k1 elliptic curve.
-            return SECP256K1Point2D(x=0, y=0)
-        else:
+        if curve_name not in SECP256K1Point2D._curve_names():
             raise ValueError(f"Unsupported curve name: {curve_name}")
+
+        # Using a special (marker) point in Cartesian coordinates (not otherwise on the curve) to encode the
+        # "point-at-infinity" (identity) element for the secp256k1 elliptic curve.
+        return SECP256K1Point2D._identity_pt
 
     @override
     def curve_order(self) -> int:
@@ -332,7 +355,7 @@ class SECP256K1Point2D(ECCPoint2D):
     @override
     def is_point_at_infinity(self) -> bool:
         # Check for special (marker) point in Cartesian coordinates.
-        return self.x == 0 and self.y == 0
+        return self.xy == SECP256K1Point2D._IDENTITY_POINT2D
 
     @override
     def serialize(self, compress: bool = False) -> bytes:
@@ -349,7 +372,7 @@ class SECP256K1Point2D(ECCPoint2D):
     @staticmethod
     def _encode_point_SEC1(ecc_point: PlainPoint2D, compress: bool = False) -> bytes:
         # If the identity element (i.e., the point-at-infinity), return only the single-byte Code: 0x00.
-        if ecc_point == (0, 0):
+        if ecc_point == SECP256K1Point2D._IDENTITY_POINT2D:
             return b"\x00"
 
         if compress:
@@ -367,7 +390,7 @@ class SECP256K1Point2D(ECCPoint2D):
     def _decode_point_SEC1(serialized_point: bytes) -> PlainPoint2D:
         if ECCPoint2D._is_SEC1_point_at_infinity(serialized_point):
             # Return the identity element (i.e., the point-at-infinity) for the secp256k1 elliptic curve.
-            return 0, 0  # special (marker) point in Cartesian coordinates
+            return SECP256K1Point2D._IDENTITY_POINT2D  # special (marker) point in Cartesian coordinates
 
         code: int = serialized_point[0]
         if code == 0x02 or code == 0x03:
@@ -398,7 +421,7 @@ class SECP256K1Point2D(ECCPoint2D):
 
             # Disallow the point-at-infinity (identity) element for uncompressed points (i.e., SEC1 defines a unique
             # encoding for this identity element).
-            if (x, y) == (0, 0):
+            if (x, y) == SECP256K1Point2D._IDENTITY_POINT2D:
                 raise ValueError(
                     "Invalid SEC1 encoding: uncompressed point must not be the point-at-infinity"
                     " [x_coord={x}, y_coord={y}]"
