@@ -762,7 +762,7 @@ class PaillierPublicKey:
                 pow(self.g, message, self.n2) * pow(blinding_factor_base, self.n, self.n2)
             ) % self.n2
 
-    def encrypt_and_return_blinding_factor(self, message: int) -> (EncryptedUnsignedInteger, int):
+    def encrypt_and_return_blinding_factor(self, message: int) -> tuple[EncryptedUnsignedInteger, int]:
         """
         Encrypts a non-negative integer message using the Paillier public key, returning the encrypted message and the
         random blinding factor used in the encryption. Encryption of message `m` is performed as:
