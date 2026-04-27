@@ -113,7 +113,7 @@ class PaillierPrivateKey:
     def __str__(self) -> str:
         """
         Returns a base64-based encoding of this Paillier private key, which uses the following format:
-            `{private_lambda_base64}:{public_modulus_base64}`
+            `{private_prime_p_base64}:{private_prime_q_base64}`
         """
         return self._encode_to_base64()
 
@@ -762,7 +762,7 @@ class PaillierPublicKey:
                 pow(self.g, message, self.n2) * pow(blinding_factor_base, self.n, self.n2)
             ) % self.n2
 
-    def encrypt_and_return_blinding_factor(self, message: int) -> (EncryptedUnsignedInteger, int):
+    def encrypt_and_return_blinding_factor(self, message: int) -> tuple[EncryptedUnsignedInteger, int]:
         """
         Encrypts a non-negative integer message using the Paillier public key, returning the encrypted message and the
         random blinding factor used in the encryption. Encryption of message `m` is performed as:
@@ -1012,6 +1012,50 @@ class EncryptedUnsignedInteger:
         """
         return self.add(scalar)
 
+    def __neg__(self) -> EncryptedUnsignedInteger:
+        """
+        Returns the homomorphic additive inverse of this Paillier ciphertext, calculating an encryption of the additive
+        inverse of the encrypted plaintext integer modulo `n`, the plaintext domain's modulus
+        (i.e., `Enc(-p) = Enc(n-p)`).
+
+        Note: This is equivalent to subtracting this ciphertext from an encryption of zero,
+          (i.e., `c2 := -Enc(p1) = Enc(0) - Enc(p1) = Enc(0) + (-Enc(p1))`), but there is a more efficient method to
+          calculate the homomorphic additive inverse of a Paillier ciphertext.
+
+        In practice, the modular multiplicative inverse of the ciphertext's encrypted value is calculated (that maps to
+        the homomorphic additive inverse), and the result is returned as a new Paillier ciphertext.
+
+        :return: The homomorphic additive inverse of this Paillier ciphertext.
+        """
+        return self.negate()
+
+    def __sub__(self, other: EncryptedUnsignedInteger | int) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic subtraction of two Paillier encrypted integers, using the left-subtraction operator
+        (i.e., `c3 := Enc(p1 - p2) = Enc(p1) * Enc(p2)^-1 mod n^2`, where `p1` and `p2` plaintext non-negative integers,
+        and `c3` is a Paillier ciphertext).
+
+        Alternatively, if passed a non-negative integer, it performs homomorphic subtraction of an encryption of the
+        provided plaintext non-negative integer scalar from this ciphertext
+        (i.e., `c2 := Enc(p1 - s) = Enc(p1) * Enc(s)^-1 mod n^2`, where `p1` is the original plaintext non-negative
+        integer encrypted as this ciphertext, `s` is the provided plaintext non-negative integer scalar, and `c2` is the
+        resulting Paillier ciphertext encrypting the plaintext difference: `p1 - s`).
+
+        Usage: `EncryptedUnsignedInteger - EncryptedUnsignedInteger` or `EncryptedUnsignedInteger - message_scalar`
+        """
+        return self.subtract(other)
+
+    def __rsub__(self, scalar: int) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic subtraction of an encrypted integer from a plaintext non-negative integer scalar, using the
+        right-subtraction operator (i.e., `c2 := Enc(s - p1) = Enc(s) * Enc(p1)^-1 mod n^2`, where `p1` is the original
+        plaintext non-negative integer encrypted as this ciphertext, `s` is the provided plaintext non-negative integer
+        scalar, and `c2` is the resulting Paillier ciphertext encrypting the plaintext difference: `s - p1`).
+
+        Usage: `message_scalar - EncryptedUnsignedInteger`
+        """
+        return self.subtract(scalar, left_sided=False)
+
     def __mul__(self, scalar: int) -> EncryptedUnsignedInteger:
         """
         Homomorphic scalar multiplication of an encrypted integer by a plaintext "scalar" value, using the left-multiply
@@ -1083,7 +1127,7 @@ class EncryptedUnsignedInteger:
 
     def _add_ciphertexts(self, other: EncryptedUnsignedInteger) -> EncryptedUnsignedInteger:
         """
-        Homomorphic addition of two Paillier non-negative encrypted integers, using the left-addition operator
+        Homomorphic addition of two Paillier non-negative encrypted integers
         (i.e., `c3 := Enc(p1 + p2) = Enc(p1) * Enc(p2) mod n^2`, where `p1` and `p2` plaintext non-negative integers,
         and `c3` is a Paillier ciphertext).
         """
@@ -1097,10 +1141,10 @@ class EncryptedUnsignedInteger:
 
     def _add_scalar(self, scalar: int) -> EncryptedUnsignedInteger:
         """
-        Homomorphic addition of an encrypted non-negative integer with a plaintext non-negative integer scalar, using
-        the right-addition operator (i.e., `c2 := Enc(p1 + s) = Enc(p1) * g^s mod n^2`, where `p1` is the original
-        plaintext non-negative integer encrypted as this ciphertext, `s` is the provided plaintext non-negative integer
-        scalar, and `c2` is the resulting Paillier ciphertext encrypting the plaintext sum: `p1 + s`).
+        Homomorphic addition of an encrypted non-negative integer with a plaintext non-negative integer scalar
+        (i.e., `c2 := Enc(p1 + s) = Enc(p1) * g^s mod n^2`, where `p1` is the original plaintext non-negative integer
+        encrypted as this ciphertext, `s` is the provided plaintext non-negative integer scalar, and `c2` is the
+        resulting Paillier ciphertext encrypting the plaintext sum: `p1 + s`).
         """
         if scalar < 0 or scalar >= self.public_key.n:
             raise ValueError("Scalar integer must be a non-negative integer in the range [0, n).")
@@ -1121,6 +1165,104 @@ class EncryptedUnsignedInteger:
             # Homomorphic addition of scalar without re-blinding: `c2 := Enc(p + s) = Enc(p) * g^s mod n^2`
             return EncryptedUnsignedInteger(
                 (self.encrypted * pow(self.public_key.g, scalar, self.public_key.n2)) % self.public_key.n2,
+                self.public_key
+            )
+
+    def negate(self) -> EncryptedUnsignedInteger:
+        """
+        Negates the encrypted integer, returning a new ciphertext encrypting the negation of the original plaintext
+        value modulo `n`, the plaintext domain's modulus (i.e., `Enc(-p) = Enc(n-p)`).
+        """
+        return EncryptedUnsignedInteger(
+            mod_inverse(self.encrypted, self.public_key.n2),
+            self.public_key
+        )
+
+    def subtract(self, other: EncryptedUnsignedInteger | int, left_sided: bool = True) -> EncryptedUnsignedInteger:
+        if type(other) is int:
+            # If the subtraction is left-sided (i.e., `EncryptedUnsignedInteger - scalar`), then subtract the scalar.
+            if left_sided:
+                return self._subtract_scalar(other)
+            # If the subtraction is right-sided (i.e., `scalar - EncryptedUnsignedInteger`), then reverse the operands.
+            else:
+                return self._scalar_minus_ciphertext(other)
+        elif isinstance(other, EncryptedUnsignedInteger):
+            # In the case of homomorphic subtraction of two ciphertexts, the operand is left-sided subtraction.
+            return self._subtract_ciphertexts(other)
+        else:
+            raise ValueError("Homomorphic subtraction operands must be of type EncryptedUnsignedInteger or int.")
+
+    def _subtract_ciphertexts(self, other: EncryptedUnsignedInteger) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic subtraction of two Paillier non-negative encrypted integers
+        (i.e., `c3 := Enc(p1 - p2) = Enc(p1) * Enc(p2)^-1 mod n^2`, where `p1` and `p2` plaintext non-negative integers,
+        and `c3` is a Paillier ciphertext).
+        """
+        if self.public_key != other.public_key:
+            raise ValueError("Homomorphic subtraction operands must have the same Paillier public key.")
+
+        return EncryptedUnsignedInteger(
+            (self.encrypted * mod_inverse(other.encrypted, self.public_key.n2)) % self.public_key.n2,
+            self.public_key
+        )
+
+    def _subtract_scalar(self, scalar: int) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic subtraction of an encrypted non-negative integer with a plaintext non-negative integer scalar
+        (i.e., `c2 := Enc(p1 - s) = Enc(p1) * Enc(s)^-1 mod n^2`, where `p1` is the original plaintext non-negative
+        integer encrypted as this ciphertext, `s` is the provided plaintext non-negative integer scalar, and `c2` is
+        the resulting Paillier ciphertext encrypting the plaintext difference: `p1 - s`).
+        """
+        if scalar < 0 or scalar >= self.public_key.n:
+            raise ValueError("Scalar integer must be a non-negative integer in the range [0, n).")
+
+        if self.public_key.g == self.public_key.n + 1:
+            # Homomorphic subtraction of scalar without re-blinding: `c2 := Enc(p - s) = Enc(p) * (1 + n*s)^-1 mod n^2`,
+            # using the optimization: `g^s ≡ (1 + n)^s ≡ (1 + n*s) mod n^2`, when `g == n + 1`.
+            return EncryptedUnsignedInteger(
+                (self.encrypted * mod_inverse(1 + self.public_key.n * scalar, self.public_key.n2)) % self.public_key.n2,
+                self.public_key
+            )
+        else:
+            # Homomorphic subtraction of scalar without re-blinding:
+            # `c2 := Enc(p - s) = Enc(p) * (g^s)^-1 mod n^2 ≡ Enc(p) * g^(-s) mod n^2`
+            # (Note: `g^(-s) ≡ g^(n-s) mod n^2`)
+            #
+            # TODO: Check which of the following 3 ways of computing `g^(-s) mod n^2` is most efficient, and adjust
+            #   the implementation accordingly:
+            #     1.) `pow(g, -s, n2)`
+            #     2.) `pow(g, n - scalar, n2)`
+            #     3.a.) `mod_inverse(pow(g, scalar, n2), n2)` or 3.b.) `pow(mod_inverse(g, n2), scalar, n2)`
+            return EncryptedUnsignedInteger(
+                (self.encrypted * pow(self.public_key.g, -scalar, self.public_key.n2)) % self.public_key.n2,
+                self.public_key
+            )
+
+    def _scalar_minus_ciphertext(self, scalar: int) -> EncryptedUnsignedInteger:
+        """
+        Homomorphic subtraction of an encrypted non-negative integer from a plaintext non-negative integer scalar
+        (i.e., `c2 := Enc(s - p1) = Enc(s) * Enc(p1)^-1 mod n^2`, where `p1` is the original plaintext non-negative
+        integer encrypted as this ciphertext, `s` is the provided plaintext non-negative integer scalar, and `c2` is
+        the resulting Paillier ciphertext encrypting the plaintext difference: `s - p1`).
+        """
+        if scalar < 0 or scalar >= self.public_key.n:
+            raise ValueError("Scalar integer must be a non-negative integer in the range [0, n).")
+
+        if self.public_key.g == self.public_key.n + 1:
+            # Homomorphic subtraction of ciphertext from scalar without re-blinding:
+            # `c2 := Enc(s - p1) = Enc(s) * Enc(p1)^-1 = (1 + n*s) * Enc(p1)^-1 mod n^2`, using the optimization:
+            # `g^s ≡ (1 + n)^s ≡ (1 + n*s) mod n^2`, when `g == n + 1`.
+            return EncryptedUnsignedInteger((
+                    (1 + self.public_key.n * scalar) * mod_inverse(self.encrypted, self.public_key.n2)
+                ) % self.public_key.n2,
+                self.public_key
+            )
+        else:
+            # Homomorphic subtraction of ciphertext from scalar without re-blinding:
+            # `c2 := Enc(s - p1) = Enc(s) * Enc(p1)^-1 = g^s * Enc(p1)^-1 mod n^2`
+            return EncryptedUnsignedInteger((
+                    pow(self.public_key.g, scalar, self.public_key.n2) * mod_inverse(self.encrypted, self.public_key.n2)
+                ) % self.public_key.n2,
                 self.public_key
             )
 
