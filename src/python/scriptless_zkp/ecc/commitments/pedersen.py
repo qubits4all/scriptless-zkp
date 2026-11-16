@@ -302,6 +302,124 @@ class SealedPedersenCommitment:
 
         return result
 
+    def __mul__(self, multiplier: int) -> SealedPedersenCommitment:
+        """
+        Multiplies this sealed Pedersen commitment by a scalar multiplier, returning a new sealed commitment that is a
+        commitment to the product of the committed value and the multiplier (up to a blinding factor, equal to the
+        original commitment's blinding factor multiplied by the multiplier).
+
+        This left-multiply operator is provided for convenience, to allow the use of the `*` operator to perform
+        homomorphic scalar multiplication of revealed Pedersen commitments, where the scalar multiplier is placed on
+        the right (e.g., `C(x) * k`).
+
+        This left-multiply operation is commutative with respect to the scalar multiplier, so `C(x) * k == k * C(x)`,
+        where the right-multiply operator is used on the right-hand size of this equation (see: `__rmul__` method).
+
+        :param multiplier: the scalar multiplier to multiply the commitment by.
+        :return: a new sealed Pedersen commitment that is a commitment to the product of the committed value and the
+                 multiplier, which must lie in the range `[0, curve_order - 1]`.
+        :raises ValueError: if the multiplier is not in the range `[0, curve_order - 1]`.
+        :raises InvalidECCPedersenCommitmentPointException: if the multiplication results in an invalid commitment
+                point (i.e., the point-at-infinity). In this case, the homomorphic scalar product and the underlying
+                commitment should be recalculated, using a new NUMS generator point `H`.
+        :raises InvalidECCPointException: if the multiplication results in an invalid commitment point that is not on
+                this commitment's elliptic curve. This may indicate that the commitments being multiplied may not in
+                fact have been calculated using the same elliptic curve, or that they were otherwise incorrectly
+                calculated.
+        """
+        return self.multiply(multiplier)
+
+    def __rmul__(self, multiplier: int) -> SealedPedersenCommitment:
+        """
+        Multiplies this sealed Pedersen commitment by a scalar multiplier, returning a new sealed commitment that is a
+        commitment to the product of the committed value and the multiplier (up to a blinding factor, equal to the
+        original commitment's blinding factor multiplied by the multiplier).
+
+        This right-multiply operator is provided for convenience, to allow the use of the `*` operator to perform
+        homomorphic scalar multiplication of revealed Pedersen commitments, where the scalar multiplier is placed on
+        the left (e.g., `k * C(x)`).
+
+        This right-multiply operation is commutative with respect to the scalar multiplier, so `k * C(x) == C(x) * k`,
+        where the left-multiply operator is used on the right-hand size of this equation (see: `__mul__` method).
+
+        :param multiplier: the scalar multiplier to multiply the commitment by.
+        :return: a new sealed Pedersen commitment that is a commitment to the product of the committed value and the
+                 multiplier, which must lie in the range `[0, curve_order - 1]`.
+        :raises ValueError: if the multiplier is not in the range `[0, curve_order - 1]`.
+        :raises InvalidECCPedersenCommitmentPointException: if the multiplication results in an invalid commitment
+                point (i.e., the point-at-infinity). In this case, the homomorphic scalar product and the underlying
+                commitment should be recalculated, using a new NUMS generator point `H`.
+        :raises InvalidECCPointException: if the multiplication results in an invalid commitment point that is not on
+                this commitment's elliptic curve. This may indicate that the commitments being multiplied may not in
+                fact have been calculated using the same elliptic curve, or that they were otherwise incorrectly
+                calculated.
+        """
+        return self.multiply(multiplier)
+
+    def multiply(self, multiplier: int) -> SealedPedersenCommitment:
+        """
+        Multiplies this sealed Pedersen commitment by a scalar multiplier, returning a new sealed commitment that is a
+        commitment to the product of the committed value and the multiplier (up to a blinding factor, equal to the
+        original commitment's blinding factor multiplied by the multiplier).
+        :param multiplier: the scalar multiplier to multiply the commitment by, which must lie in the range
+               `[0, curve_order - 1]`.
+        :return: a new sealed Pedersen commitment that is a commitment to the product of the committed value and the
+                 multiplier.
+        :raises ValueError: if the multiplier is not in the range `[0, curve_order - 1]`.
+        :raises InvalidECCPedersenCommitmentPointException: if the multiplication results in an invalid commitment
+                point (i.e., the point-at-infinity). In this case, the homomorphic scalar product and the underlying
+                commitment should be recalculated, using a new NUMS generator point `H`.
+                - Additionally, in this case the existing generator point `H` should not be reused for any future
+                commitments & should be considered potentially compromised, because this indicates the discrete log of
+                `H` w.r.t. `G` can now be calculated by the committer/prover, and by anyone who later receives the
+                revealed commitment, unless the associated blinding factor is zero.
+                - Note: In the case the blinding factor equals `0 mod q`, the product of committed value and
+                multiplier is also `0 mod q`, where the `q` is the configured elliptic curve's sub-group's
+                order (i.e., since `O := 0*G + 0*H`).
+        :raises InvalidECCPointException: if the multiplication results in an invalid commitment point that is not on
+                this commitment's elliptic curve. This may indicate that the commitments being multiplied may not in
+                fact have been calculated using the same elliptic curve, or that they were otherwise incorrectly
+                calculated.
+        """
+        if not (0 <= multiplier < self.curve_config.order):
+            raise ValueError(f"The multiplier must be in the range [0, {self.curve_config.order - 1}].")
+        elif multiplier == 0:
+            blinding_factor: int = ecc_utils.generate_random_nonce(self.curve_config, exclude_one=True)
+            # If the multiplier is zero, we use a random blinding factor to create a new commitment point committing to
+            # the product: zero, which is unlikely to be the point-at-infinity (i.e., `C(0, r1)` ).
+            commitment_product_point: ECC.EccPoint = self.nums_generator * blinding_factor
+        else:
+            # Multiply the commitment point by the scalar multiplier.
+            commitment_product_point: ECC.EccPoint = self.commitment_point * multiplier
+
+        if commitment_product_point.is_point_at_infinity():
+            raise InvalidECCPedersenCommitmentPointException(
+                ecc_curve_name=self.curve_config.curve,
+                message="Multiplication of a sealed Pedersen commitment resulted in an invalid commitment point"
+                        " (point-at-infinity). This homomorphic scalar product and the underlying commitment should be"
+                        " recalculated, using a new NUMS generator point H. -- NOTE: The existing generator H should"
+                        " not be reused for any future commitments & should be considered potentially compromised."
+            )
+        # Reject an invalid product commitment, if its elliptic curve point is not on the curve.
+        elif not self.curve_config.is_point_on_curve(commitment_product_point):
+            raise InvalidECCPointException(
+                ecc_curve_name=self.curve_config.curve,
+                point_x=commitment_product_point.x,
+                point_y=commitment_product_point.y,
+                msg="Multiplication of a sealed Pedersen commitment resulted in an invalid commitment point that is not"
+                    " on this commitment's elliptic curve. This may indicate that the commitments being multiplied may"
+                    " not in fact have been calculated using the same elliptic curve, or that they were otherwise"
+                    " incorrectly calculated.",
+                append_default_message=False
+            )
+
+        # Return a new sealed Pedersen commitment with the product commitment point.
+        return SealedPedersenCommitment(
+            self.curve_config,
+            self.nums_generator,
+            commitment_product_point
+        )
+
 
 @dataclass
 class RevealedPedersenCommitment:
@@ -513,6 +631,142 @@ class RevealedPedersenCommitment:
             )
 
         return result
+
+    def __mul__(self, multiplier: int) -> RevealedPedersenCommitment:
+        """
+        Multiplies this revealed Pedersen commitment by a scalar multiplier, returning a new revealed commitment that
+        is a commitment to the product of the committed value and the multiplier, up to a blinding factor (equal to the
+        original commitment's blinding factor multiplied by the multiplier, unless the multiplier is zero, in which case
+        a new random blinding factor is used instead).
+
+        This left-multiply operator is provided for convenience, to allow the use of the `*` operator to perform
+        homomorphic scalar multiplication of revealed Pedersen commitments, where the scalar multiplier is placed on
+        the right (e.g., `C(x) * k`).
+
+        This left-multiply operation is commutative with respect to the scalar multiplier, so `C(x) * k == k * C(x)`,
+        where the right-multiply operator is used on the right-hand size of this equation (see: `__rmul__` method).
+
+        :param multiplier: the scalar multiplier to multiply the commitment by.
+        :return: a new revealed Pedersen commitment that is a commitment to the product of the committed value and the
+                 multiplier, which must lie in the range `[0, curve_order - 1]`.
+        :raises ValueError: if the multiplier is not in the range `[0, curve_order - 1]`.
+        :raises InvalidECCPedersenCommitmentPointException: if the multiplication results in an invalid commitment
+                point (i.e., the point-at-infinity). In this case, the homomorphic scalar product and the underlying
+                commitment should be recalculated, using a new NUMS generator point `H`.
+        :raises InvalidECCPointException: if the multiplication results in an invalid commitment point that is not on
+                this commitment's elliptic curve. This may indicate that the commitments being multiplied may not in
+                fact have been calculated using the same elliptic curve, or that they were otherwise incorrectly
+                calculated.
+        """
+        return self.multiply(multiplier)
+
+    def __rmul__(self, multiplier: int) -> RevealedPedersenCommitment:
+        """
+        Multiplies this revealed Pedersen commitment by a scalar multiplier, returning a new revealed commitment that
+        is a commitment to the product of the committed value and the multiplier, up to a blinding factor (equal to the
+        original commitment's blinding factor multiplied by the multiplier, unless the multiplier is zero, in which case
+        a new random blinding factor is used instead).
+
+        This right-multiply operator is provided for convenience, to allow the use of the `*` operator to perform
+        homomorphic scalar multiplication of revealed Pedersen commitments, where the scalar multiplier is placed on
+        the left (e.g., `k * C(x)`).
+
+        This right-multiply operation is commutative with respect to the scalar multiplier, so `k * C(x) == C(x) * k`,
+        where the left-multiply operator is used on the right-hand size of this equation (see: `__mul__` method).
+
+        :param multiplier: the scalar multiplier to multiply the commitment by.
+        :return: a new revealed Pedersen commitment that is a commitment to the product of the committed value and the
+                 multiplier, which must lie in the range `[0, curve_order - 1]`.
+        :raises ValueError: if the multiplier is not in the range `[0, curve_order - 1]`.
+        :raises InvalidECCPedersenCommitmentPointException: if the multiplication results in an invalid commitment
+                point (i.e., the point-at-infinity). In this case, the homomorphic scalar product and the underlying
+                commitment should be recalculated, using a new NUMS generator point `H`.
+        :raises InvalidECCPointException: if the multiplication results in an invalid commitment point that is not on
+                this commitment's elliptic curve. This may indicate that the commitments being multiplied may not in
+                fact have been calculated using the same elliptic curve, or that they were otherwise incorrectly
+                calculated.
+        """
+        return self.multiply(multiplier)
+
+    def multiply(self, multiplier: int) -> RevealedPedersenCommitment:
+        """
+        Multiplies this revealed Pedersen commitment by a scalar multiplier, returning a new revealed commitment that
+        is a commitment to the product of the committed value and the multiplier (up to a blinding factor, equal to the
+        original commitment's blinding factor multiplied by the multiplier).
+        :param multiplier: the scalar multiplier to multiply the commitment by, which must lie in the range
+               `[0, curve_order - 1]`.
+        :return: a new revealed Pedersen commitment that is a commitment to the product of the committed value and the
+                 multiplier.
+        :raises ValueError: if the multiplier is not in the range `[0, curve_order - 1]`.
+        :raises InvalidECCPedersenCommitmentPointException: if the multiplication results in an invalid commitment
+                point (i.e., the point-at-infinity). In this case, the homomorphic scalar product and the underlying
+                commitment should be recalculated, using a new NUMS generator point `H`.
+                - Additionally, in this case the existing generator point `H` should not be reused for any future
+                commitments & should be considered potentially compromised, because this indicates the discrete log of
+                `H` w.r.t. `G` can be calculated by the committer/prover, and had the revealed commitment been retained
+                this discrete log could be calculated by anyone who receives it, unless the associated blinding factor is
+                zero.
+                - Note: In the case the blinding factor equals `0 mod q`, the product of committed value and
+                multiplier is also `0 mod q`, where the `q` is the configured elliptic curve's sub-group's order (i.e.,
+                since `O := 0*G + 0*H`).
+        :raises InvalidECCPointException: if the multiplication results in an invalid commitment point that is not on
+                this commitment's elliptic curve. This may indicate that the commitments being multiplied may not in
+                fact have been calculated using the same elliptic curve, or that they were otherwise incorrectly
+                calculated.
+        """
+        blinding_factor: int = self.blinding_factor
+
+        if not (0 <= multiplier < self.curve_config.order):
+            raise ValueError(f"The multiplier must be in the range [0, {self.curve_config.order - 1}].")
+        elif multiplier == 0:
+            # If the multiplier is zero, use a new random blinding factor.
+            blinding_factor = ecc_utils.generate_random_nonce(self.curve_config, exclude_one=True)
+            # If the multiplier is zero, calculate `C(0, r1)` using this new random blinding factor, which is unlikely
+            # to result in a commitment point that is the point-at-infinity.
+            commitment_product_point: ECC.EccPoint = self.nums_generator * blinding_factor
+        else:
+            # Multiply the commitment point by the scalar multiplier.
+            commitment_product_point: ECC.EccPoint = self.commitment_point * multiplier
+
+        if commitment_product_point.is_point_at_infinity():
+            raise InvalidECCPedersenCommitmentPointException(
+                ecc_curve_name=self.curve_config.curve,
+                message="Multiplication of a revealed Pedersen commitment resulted in an invalid commitment point"
+                        " (point-at-infinity). This homomorphic scalar product and the underlying commitment should be"
+                        " recalculated, using a new NUMS generator point H. -- NOTE: The existing generator H should"
+                        " not be reused for any future commitments & should be considered potentially compromised."
+            )
+        # Reject an invalid product commitment, if its elliptic curve point is not on the curve
+        elif not self.curve_config.is_point_on_curve(commitment_product_point):
+            raise InvalidECCPointException(
+                ecc_curve_name=self.curve_config.curve,
+                point_x=commitment_product_point.x,
+                point_y=commitment_product_point.y,
+                msg="Multiplication of a revealed Pedersen commitment resulted in an invalid commitment point that is"
+                    " not on this commitment's elliptic curve. This may indicate that the commitments being multiplied"
+                    " may not in fact have been calculated using the same elliptic curve, or that they were otherwise"
+                    " incorrectly calculated.",
+                append_default_message=False
+            )
+
+        # If the multiplier is zero, we use a new random blinding factor.
+        if multiplier == 0:
+            return RevealedPedersenCommitment(
+                self.curve_config,
+                self.nums_generator,
+                commitment_product_point,
+                0,               # Committed scalar product is zero.
+                blinding_factor  # new random blinding factor
+            )
+        else:
+            # Return a new revealed Pedersen commitment with the product commitment point.
+            return RevealedPedersenCommitment(
+                self.curve_config,
+                self.nums_generator,
+                commitment_product_point,
+                (self.committed * multiplier) % self.curve_config.order,
+                (self.blinding_factor * multiplier) % self.curve_config.order
+            )
 
     def verify(self) -> bool:
         # Check for invalid blinding factor (must be in the range: [1, curve_order - 1] ).
