@@ -32,7 +32,7 @@ all liability or warrantability related to its use.
 #### Elliptic Curve Cryptography (ECC) [[scriptless_zkp.ecc](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/ecc)]
   - Support for prime-order elliptic curves (Weierstrass form) [`scriptless_zkp.ecc.weierstrass_curves`]
     - **NIST P-256** (`secp256r1`), **NIST P-384** (`secp384r1`), **NIST P-521** (`secp521r1`)
-  - Support derivation of effectively-independent ECC generator points [`scriptless_zkp.ecc.generators`]
+  - Supports derivation of effectively-independent ECC generator points [`scriptless_zkp.ecc.generators`]
     - Generation of elliptic curve generator points for which _nobody_ knows the discrete logarithm w.r.t. the base
     point `G`.
 
@@ -94,9 +94,10 @@ all liability or warrantability related to its use.
 
 #### Blockchain-Agnostic Protocols
 - Prerequisites:
-  - **Verifiable Delay Functions** (VDFs) and **Verifiable Timed Discrete Logs** (VTDs)
+  - **Verifiable Delay Functions** (VDFs)
+  - **Verifiable Timed Discrete Logs** (VTDs)
 - **Universal Atomic Swaps** (UAS) protocol (based on [S.A. Thyagarajan, et al](https://eprint.iacr.org/2021/1612))
 
-#### Secure Multi-Party Computation (MCP) protocols
+#### Secure Multi-Party Computation (MPC) protocols
 - **Oblivious Transfer** (OT)
 - **Private Information Retrieval** (PIR)
