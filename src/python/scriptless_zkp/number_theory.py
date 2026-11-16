@@ -233,7 +233,9 @@ def random_prime_of_size(size_bits: int) -> int:
 def random_strong_prime(size_bits: int) -> int:
     """
     Generates a random "strong" prime number of the specified size in bits, specifically a prime `p` such that `p - 1`
-    `p + 1` both have at least one large prime factor.
+    `p + 1` both have at least one large prime factor. In particular the produced "strong" prime `p` will be in the
+    range:
+        `sqrt(2) * 2^(size_bits - 1) ≤ p < 2^size_bits - 1`
 
     :param size_bits: The number of bits to use in the prime number to be generated.
     :return: A random "strong" prime number of the specified bit size.
